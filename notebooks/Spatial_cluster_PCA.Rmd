@@ -1,0 +1,62 @@
+
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+Simulation data:
+Run PCA:
+Run DCA:
+
+## SRTsim
+```{r}
+library(Seurat)
+library(SRTsim)
+library(ggplot2)
+library(Matrix)
+```
+
+```{r}
+shinySRT1 <- SRTsim_shiny()
+```
+
+```{r}
+sim2  <- Shiny2SRT(shinySRT1)
+saveRDS(sim2, "/Users/nanxi/Documents/ZhangLab/Spatial_transcriptomics/Spatial_clusters/Simulation/SRTsim_simulation_Aug19.rds")
+```
+
+```{r}
+count_matrix <- as.matrix(sim2@simCounts) # 600 genes x 4159 cells
+```
+
+```{r}
+meta_data  <- data.frame(
+  x = sim2@simcolData@listData$x,
+  y = sim2@simcolData@listData$y,
+  Group = sim2@simcolData@listData$group,
+  FC = sim2@simcolData@listData$foldchange,
+  row.names = rownames(sim2@simcolData)
+)
+
+coords <- meta_data[,c("x", "y")]
+
+```
+
+
+```{r}
+stopifnot(ncol(count_matrix) == nrow(coords))
+stopifnot(all(c("x","y") %in% colnames(coords)))
+```
+
+```{r}
+# 1) Build Seurat object
+obj <- CreateSeuratObject(counts = count_matrix)
+obj$x <- coords$x
+obj$y <- coords$y
+
+
+## SCTransform (variance-stabilizing)
+obj <- SCTransform(obj, vst.flavor = "v2", verbose = FALSE) # creates "SCT" assay
+obj <- RunPCA(obj, assay = "SCT", npcs = 20, verbose = FALSE)
+```
+
