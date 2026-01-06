@@ -36,11 +36,9 @@ knitr::opts_chunk$set(
 set.seed(params$seed)
 ```
 
-# Overview
+# Mouse Brain EDA & Seurat Analysis
 
-This report:
-
-1. Loads the dataset from an `.rds` file
+1. Loads in rds datta set
 2. Performs exploratory data analysis (EDA) on the expression matrix and metadata
 3. Creates a **Seurat** object
 4. Runs standard QC, normalization, dimensionality reduction, and clustering
@@ -57,7 +55,9 @@ pkgs <- c(
   "ggplot2",
   "dplyr",
   "tibble",
-  "patchwork"
+  "patchwork",
+  "usethis",
+  "credentials"
 )
 
 to_install <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
