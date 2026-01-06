@@ -1,0 +1,292 @@
+---
+title: "Mouse Brain EDA & Seurat"
+author: "Emily Ekstrum"
+date: ""
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    number_sections: true
+    theme: "cosmo"
+    df_print: paged
+params:
+  rds_path: "/Users/emilyekstrum/Desktop/zhangLab/data/MouseBrain_Data/10x_mousebrain_exp_count_meta.rds"
+  assay_name: "RNA"
+  min_cells: 3
+  min_features: 200
+  mt_prefix: "^(mt-|MT-)"
+  filter: true
+  nFeature_low: 200
+  nFeature_high: 6000
+  nCount_high: 40000
+  percent_mt_high: 15
+  clustering_resolution: 0.5
+  seed: 123
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,
+  fig.width = 8,
+  fig.height = 5
+)
+set.seed(params$seed)
+```
+
+# Overview
+
+This report:
+
+1. Loads the dataset from an `.rds` file
+2. Performs exploratory data analysis (EDA) on the expression matrix and metadata
+3. Creates a **Seurat** object
+4. Runs standard QC, normalization, dimensionality reduction, and clustering
+5. Saves outputs (Seurat object + key plots)
+
+> **Input**: `r params$rds_path`
+
+# Packages
+
+```{r packages}
+pkgs <- c(
+  "Seurat",
+  "Matrix",
+  "ggplot2",
+  "dplyr",
+  "tibble",
+  "patchwork"
+)
+
+to_install <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
+if (length(to_install) > 0) {
+  install.packages(to_install, repos = "https://cloud.r-project.org")
+}
+
+# Load
+lapply(pkgs, library, character.only = TRUE)
+```
+
+# Load data
+
+```{r load-data}
+rds_path <- params$rds_path
+stopifnot(file.exists(rds_path))
+
+obj_raw <- readRDS(rds_path)
+class(obj_raw)
+
+print(dim(obj_raw))
+print(names(obj_raw))
+print(head(obj_raw[, 1:min(10, ncol(obj_raw))]))
+print(table(vapply(obj_raw, function(z) class(z)[1], character(1))))
+```
+```{r}
+# Columns that are metadata (not genes)
+meta_cols <- c("cell_id", "x", "y")
+
+# Keep only the meta columns that actually exist
+meta_cols <- meta_cols[meta_cols %in% colnames(obj_raw)]
+
+meta <- as.data.frame(obj_raw[, meta_cols, drop = FALSE])
+
+expr_df <- obj_raw[, setdiff(colnames(obj_raw), meta_cols), drop = FALSE]
+expr_df <- as.data.frame(expr_df)
+
+# Force expression columns to numeric
+expr_df[] <- lapply(expr_df, function(col) {
+  if (is.factor(col)) col <- as.character(col)
+  suppressWarnings(as.numeric(col))
+})
+
+# If any gene columns still fail conversion, stop and print them
+bad <- names(expr_df)[vapply(expr_df, function(col) all(is.na(col)), logical(1))]
+if (length(bad) > 0) {
+  stop("These expression columns could not be converted to numeric: ",
+       paste(bad[1:min(30, length(bad))], collapse = ", "),
+       if (length(bad) > 30) " ..." else "")
+}
+
+expr_mat <- as.matrix(expr_df)
+expr_mat[is.na(expr_mat)] <- 0
+
+counts <- Matrix::Matrix(expr_mat, sparse = TRUE)
+counts <- Matrix::t(counts)
+
+# Use cell_id as the Seurat cell names if present
+if ("cell_id" %in% colnames(meta)) {
+  colnames(counts) <- make.unique(as.character(meta$cell_id))
+  rownames(meta) <- colnames(counts)
+} else {
+  colnames(counts) <- paste0("cell_", seq_len(ncol(counts)))
+  rownames(meta) <- colnames(counts)
+}
+
+rownames(counts) <- colnames(expr_df)
+
+dim(counts)  # genes x cells
+dim(meta)    # cells x meta data cols
+
+```
+
+# Create Seurat object
+
+```{r create-seurat}
+mouse_seurat <- CreateSeuratObject(
+  counts = counts,
+  meta.data = meta,
+  min.cells = 3,
+  min.features = 200
+)
+
+mouse_seurat@meta.data$imagerow <- mouse_seurat$y
+mouse_seurat@meta.data$imagecol <- mouse_seurat$x
+
+```
+
+
+# QC plots
+
+```{r qc-plots}
+features_to_plot <- c("nFeature_RNA", "nCount_RNA")
+if ("percent.mt" %in% colnames(mouse_seurat@meta.data)) features_to_plot <- c(features_to_plot, "percent.mt")
+
+VlnPlot(mouse_seurat, features = features_to_plot, ncol = length(features_to_plot), pt.size = 0.1)
+```
+
+```{r qc-scatter}
+p_a <- FeatureScatter(mouse_seurat, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+if ("percent.mt" %in% colnames(mouse_seurat@meta.data)) {
+  p_b <- FeatureScatter(mouse_seurat, feature1 = "nCount_RNA", feature2 = "percent.mt")
+  p_a + p_b
+} else {
+  p_a
+}
+```
+
+# Filtering 
+
+```{r filtering}
+if (isTRUE(params$filter)) {
+  message("Filtering enabled with thresholds:")
+  print(list(
+    nFeature_low = params$nFeature_low,
+    nFeature_high = params$nFeature_high,
+    nCount_high = params$nCount_high,
+    percent_mt_high = params$percent_mt_high
+  ))
+
+  expr <- mouse_seurat@meta.data$nFeature_RNA >= params$nFeature_low &
+          mouse_seurat@meta.data$nFeature_RNA <= params$nFeature_high &
+          mouse_seurat@meta.data$nCount_RNA <= params$nCount_high
+
+  if ("percent.mt" %in% colnames(mouse_seurat@meta.data)) {
+    expr <- expr & (mouse_seurat@meta.data$percent.mt <= params$percent_mt_high)
+  }
+
+  mouse_seurat <- subset(mouse_seurat, cells = rownames(mouse_seurat@meta.data)[expr])
+}
+
+mouse_seurat
+```
+
+
+# Visualize on x y coords
+```{r}
+#head(mouse_seurat@meta.data[, c("x","y")])
+df <- data.frame(mouse_seurat@meta.data, cluster = Idents(mouse_seurat))
+ggplot(df, aes(x = x, y = y, color = cluster)) +
+  geom_point(size = 0.8) +
+  coord_fixed() +
+  scale_y_reverse() +        
+  theme_classic() +
+  labs(title = "Clusters in tissue coordinates", x = "x", y = "y")
+
+```
+
+# look at a specific gene in the tissue coordinates
+```{r}
+gene <- "Gm1992"  # change
+df$expr <- FetchData(mouse_seurat, vars = gene)[,1]
+
+ggplot(df, aes(x = x, y = y, color = expr)) +
+  geom_point(size = 0.8) +
+  coord_fixed() +
+  scale_y_reverse() +
+  theme_classic() +
+  labs(title = paste(gene, "expression in tissue coordinates"), x = "x", y = "y")
+
+```
+
+
+# Dim reduction
+
+```{r seurat-workflow}
+mouse_seurat_norm <- NormalizeData(mouse_seurat)
+mouse_seurat_norm_VF <- FindVariableFeatures(mouse_seurat_norm, selection.method = "vst", nfeatures = 2000)
+mouse_seurat_norm_VF_scale <- ScaleData(mouse_seurat_norm_VF, features = rownames(mouse_seurat_norm_VF))
+mouse_seurat_PCA <- RunPCA(mouse_seurat_norm_VF_scale, features = VariableFeatures(mouse_seurat_norm_VF_scale))
+
+ElbowPlot(mouse_seurat_PCA)
+```
+```{r}
+#plot PCA 
+DimPlot(
+  mouse_seurat_PCA,
+  reduction = "pca",
+  pt.size = 0.6
+) + ggtitle("PCA of spatial transcriptomics spots")
+```
+```{r}
+#color PCA by genes & counts
+FeaturePlot(mouse_seurat_PCA, reduction = "pca", features = "nFeature_RNA")
+FeaturePlot(mouse_seurat_PCA, reduction = "pca", features = "nCount_RNA")
+```
+
+```{r}
+# color PCA by spatial coordinates
+FeaturePlot(mouse_seurat_PCA, reduction = "pca", features = "x")
+FeaturePlot(mouse_seurat_PCA, reduction = "pca", features = "y")
+
+```
+
+```{r}
+# genes contributing to PCs
+VizDimLoadings(mouse_seurat_PCA, dims = 1:2, reduction = "pca")
+```
+
+```{r}
+# top genes per PC
+DimHeatmap(mouse_seurat_PCA, dims = 1:6, cells = 500, balanced = TRUE)
+
+```
+
+
+```{r umap-cluster}
+mouse_seurat_PCA <- FindNeighbors(mouse_seurat_PCA, dims = 1:30)
+mouse_seurat_PCA <- FindClusters(mouse_seurat_PCA, resolution = params$clustering_resolution)
+mouse_seurat_UMAP <- RunUMAP(mouse_seurat_PCA, dims = 1:30)
+
+DimPlot(mouse_seurat_UMAP, reduction = "umap", label = TRUE) + NoLegend()
+```
+
+
+
+
+# Save outputs
+
+```{r save, results='asis'}
+out_dir <- "outputs"
+dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
+
+seurat_rds <- file.path(out_dir, "mousebrain_seurat.rds")
+saveRDS(seu, seurat_rds)
+
+cat("Saved Seurat object to: ", seurat_rds, "\\n")
+```
+
+```{r session-info}
+sessionInfo()
+```
