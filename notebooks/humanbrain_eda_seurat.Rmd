@@ -1,5 +1,5 @@
 ---
-title: "Human Brain EDA & Seurat"
+title: "Human Brain (DLPFC) 10x EDA & Seurat"
 author: "Emily Ekstrum"
 date: ""
 output:
@@ -7,19 +7,34 @@ output:
     toc: true
     toc_depth: 3
     number_sections: true
-    theme: "cosmo"
-    df_print: paged
+    theme: cosmo
 params:
-  rds_path: "/Users/emilyekstrum/Desktop/zhangLab/data/MouseBrain_Data/10x_mousebrain_exp_count_meta.rds"
+  # Required
+  h5_path: "/Users/emilyekstrum/Desktop/zhangLab/data/DLPFC_Data/Sample151673/151673_filtered_feature_bc_matrix.h5"
+
+  # Optional but recommended (spatial coordinates; typically 2 columns like x/y or row/col)
+  spatial_csv: "/Users/emilyekstrum/Desktop/zhangLab/data/DLPFC_Data/Sample151673/DLPFC_spatial_3639cells_2cols.csv"
+
+  # Optional manual annotations (CSV preferred); leave "" to skip
+  annotation_csv: "/Users/emilyekstrum/Desktop/zhangLab/data/DLPFC_Data/Sample151673/Manual_annotation_3639cells.csv"
+
+  # Basic Seurat object filters
   assay_name: "RNA"
   min_cells: 3
   min_features: 200
-  mt_prefix: "^(mt-|MT-)"
+
+  # Human mitochondrial prefix
+  mt_prefix: "^MT-"
+
+  # QC filtering (toggle + starting thresholds)
   filter: true
   nFeature_low: 200
-  nFeature_high: 6000
-  nCount_high: 40000
-  percent_mt_high: 15
+  nFeature_high: 7500
+  nCount_high: 60000
+  percent_mt_high: 20
+
+  # Downstream analysis
+  n_pcs: 30
   clustering_resolution: 0.5
   seed: 123
 ---
@@ -33,65 +48,283 @@ knitr::opts_chunk$set(
   fig.height = 5
 )
 set.seed(params$seed)
+
+`%||%` <- function(a, b) if (!is.null(a)) a else b
 ```
 
-# investigate files
+# Overview
 
-```{r}
-library("rhdf5")
-bc_matrix <- h5ls("/Users/emilyekstrum/Desktop/zhangLab/data/DLPFC_Data/Sample151673/151673_filtered_feature_bc_matrix.h5")
-```
+This report reproduces the same Seurat pipeline you ran for the mouse brain data, but for the **human brain (DLPFC) dataset** stored as a 10x `.h5` matrix:
 
-```{r}
-head(bc_matrix)
-```
+1. Load 10x counts (`Read10X_h5`)
+2. Optionally merge spatial coordinates and manual annotations into `meta.data`
+3. EDA/QC: library size, detected genes, mitochondrial fraction
+4. Optional filtering
+5. Standard Seurat workflow: Normalize → HVFs → Scale → PCA → Neighbors → Clusters → UMAP
+6. Spatial visualization using coordinate scatter plots (works even without histology images)
 
-```{r}
-cols_2 <- read.csv("/Users/emilyekstrum/Desktop/zhangLab/data/DLPFC_Data/Sample151673/DLPFC_spatial_3639cells_2cols.csv")
-head(cols_2)
-```
+**Inputs**
+- Counts: `r params$h5_path`
+- Spatial coords (optional): `r params$spatial_csv`
+- Manual annotations (optional): `r params$annotation_csv`
 
-
-```{r}
-mrna_count <- read.csv("/Users/emilyekstrum/Desktop/zhangLab/data/DLPFC_Data/Sample151673/LIBD_mrna_count_33538genes_3639cells.csv")
-head(mrna_count)
-```
-
-
-```{r}
-manual_annotation_3611 <- readRDS("/Users/emilyekstrum/Desktop/zhangLab/data/DLPFC_Data/Sample151673/Manual_annotation_3611cells.rds")
-head(manual_annotation_3611)
-```
-
-
-```{r}
-manual_annotation_3639 <- read.csv("/Users/emilyekstrum/Desktop/zhangLab/data/DLPFC_Data/Sample151673/Manual_annotation_3639cells.csv")
-head(manual_annotation_3639)
-```
+# Packages
 
 ```{r packages}
-pkgs <- c(
-  "Seurat",
-  "SpatialExperiment",
-  "STexampleData",
-  "ggspavis",
-  "scater",
-  "scarn",
-  "pheatmap",
-  "Matrix",
-  "ggplot2",
-  "dplyr",
-  "tibble",
-  "patchwork"
-)
-
+pkgs <- c("Seurat","Matrix","ggplot2","dplyr","tibble","patchwork","readr", "hdf5r")
 to_install <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
-if (length(to_install) > 0) {
-  install.packages(to_install, repos = "https://cloud.r-project.org")
-}
-
-# Load
+if (length(to_install) > 0) install.packages(to_install, repos = "https://cloud.r-project.org")
 lapply(pkgs, library, character.only = TRUE)
 ```
 
+# Load counts from 10x H5
 
+```{r load-h5}
+h5_path <- params$h5_path
+stopifnot(file.exists(h5_path))
+
+counts <- Read10X_h5(h5_path)
+
+# Read10X_h5 may return a matrix OR a named list of matrices (e.g., "Gene Expression")
+if (is.list(counts)) {
+  message("Read10X_h5 returned a list with names: ", paste(names(counts), collapse = ", "))
+  # Prefer common key names
+  key <- intersect(names(counts), c("Gene Expression","RNA","gene_expression","GeneExpression"))
+  if (length(key) == 0) key <- names(counts)[1]
+  counts <- counts[[key[1]]]
+}
+
+stopifnot(inherits(counts, c("dgCMatrix","matrix")))
+dim(counts)
+```
+
+# Load optional metadata (spatial coords + manual annotations)
+
+This section tries to merge metadata by cell barcode when possible. If no explicit barcode column is found, it falls back to matching by row order only when the row count matches the number of cells.
+
+```{r load-meta}
+load_csv_if_exists <- function(path) {
+  if (is.null(path) || path == "" || is.na(path) || !file.exists(path)) return(NULL)
+  df <- readr::read_csv(path, show_col_types = FALSE)
+  as.data.frame(df)
+}
+
+spatial_df <- load_csv_if_exists(params$spatial_csv)
+annot_df   <- load_csv_if_exists(params$annotation_csv)
+
+if (!is.null(spatial_df)) {
+  message("Loaded spatial CSV with dim: ", paste(dim(spatial_df), collapse=" x "))
+  print(head(spatial_df, 3))
+} else {
+  message("No spatial CSV loaded (file missing or params$spatial_csv is blank).")
+}
+
+if (!is.null(annot_df)) {
+  message("Loaded annotation CSV with dim: ", paste(dim(annot_df), collapse=" x "))
+  print(head(annot_df, 3))
+} else {
+  message("No annotation CSV loaded (file missing or params$annotation_csv is blank).")
+}
+```
+
+## Merge helper
+
+```{r merge-helper}
+guess_barcode_col <- function(df) {
+  if (is.null(df)) return(NULL)
+  nms <- tolower(names(df))
+  candidates <- c("barcode","barcodes","cell","cell_id","cellid","spot","spot_id","id")
+  hit <- candidates[candidates %in% nms]
+  if (length(hit) > 0) return(names(df)[match(hit[1], nms)])
+  NULL
+}
+
+merge_meta <- function(meta, df, cells) {
+  if (is.null(df)) return(meta)
+
+  bc_col <- guess_barcode_col(df)
+
+  if (!is.null(bc_col)) {
+    df[[bc_col]] <- as.character(df[[bc_col]])
+    rownames(df) <- df[[bc_col]]
+    df[[bc_col]] <- NULL
+    df2 <- df[intersect(rownames(df), cells), , drop = FALSE]
+    meta[rownames(df2), names(df2)] <- df2
+    return(meta)
+  }
+
+  if (nrow(df) == length(cells)) {
+    rownames(df) <- cells
+    meta[cells, names(df)] <- df
+    return(meta)
+  }
+
+  warning("Could not merge metadata: no obvious barcode column and row count did not match cell count.")
+  return(meta)
+}
+```
+
+# Create Seurat object
+
+```{r create-seurat}
+cells <- colnames(counts)
+meta <- data.frame(row.names = cells)
+
+meta <- merge_meta(meta, spatial_df, cells)
+meta <- merge_meta(meta, annot_df,   cells)
+
+seu <- CreateSeuratObject(
+  counts = counts,
+  assay = params$assay_name,
+  min.cells = params$min_cells,
+  min.features = params$min_features,
+  meta.data = meta
+)
+
+seu
+```
+
+# EDA and QC
+
+## Library size, detected genes
+
+```{r qc-basic}
+VlnPlot(seu, features = c("nFeature_RNA","nCount_RNA"), pt.size = 0.1, ncol = 2)
+FeatureScatter(seu, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+```
+
+## Mitochondrial fraction
+
+```{r qc-mito}
+mt_genes <- grep(params$mt_prefix, rownames(seu), value = TRUE)
+if (length(mt_genes) > 0) {
+  seu[["percent.mt"]] <- PercentageFeatureSet(seu, features = mt_genes)
+  VlnPlot(seu, features = "percent.mt", pt.size = 0.1)
+  FeatureScatter(seu, feature1 = "nCount_RNA", feature2 = "percent.mt")
+} else {
+  message("No mitochondrial genes matched pattern: ", params$mt_prefix)
+}
+```
+
+# Optional filtering
+
+```{r filtering}
+if (isTRUE(params$filter)) {
+  keep <- seu$nFeature_RNA >= params$nFeature_low &
+          seu$nFeature_RNA <= params$nFeature_high &
+          seu$nCount_RNA   <= params$nCount_high
+
+  if ("percent.mt" %in% colnames(seu@meta.data)) {
+    keep <- keep & (seu$percent.mt <= params$percent_mt_high)
+  }
+
+  message("Keeping ", sum(keep), " / ", length(keep), " cells after QC filters.")
+  seu <- subset(seu, cells = colnames(seu)[keep])
+}
+
+seu
+```
+
+# Standard Seurat workflow (PCA → neighbors → clusters → UMAP)
+
+```{r seurat-workflow}
+seu <- NormalizeData(seu)
+seu <- FindVariableFeatures(seu, selection.method = "vst", nfeatures = 2000)
+seu <- ScaleData(seu, features = rownames(seu))
+seu <- RunPCA(seu, features = VariableFeatures(seu))
+
+Reductions(seu)
+ElbowPlot(seu, ndims = max(50, params$n_pcs))
+```
+
+```{r neighbors-cluster-umap}
+pcs <- 1:params$n_pcs
+
+seu <- FindNeighbors(seu, dims = pcs)
+message("Graphs present: ", paste(names(seu@graphs), collapse = ", "))
+
+seu <- FindClusters(seu, resolution = params$clustering_resolution)
+seu <- RunUMAP(seu, dims = pcs)
+
+DimPlot(seu, reduction = "umap", label = TRUE) + NoLegend()
+```
+
+# Spatial visualization (coordinate scatter plots)
+
+This does **not** require histology images. It just uses whatever coordinate columns exist in `meta.data`.
+
+## Detect coordinate columns
+
+```{r coords-detect}
+meta_cols <- colnames(seu@meta.data)
+coord_candidates <- list(
+  x = c("x","imagecol","col","pxl_col_in_fullres","array_col"),
+  y = c("y","imagerow","row","pxl_row_in_fullres","array_row")
+)
+
+find_first_present <- function(cands, cols) {
+  hit <- cands[cands %in% cols]
+  if (length(hit) == 0) return(NULL)
+  hit[1]
+}
+
+xcol <- find_first_present(coord_candidates$x, meta_cols)
+ycol <- find_first_present(coord_candidates$y, meta_cols)
+
+list(xcol = xcol, ycol = ycol)
+```
+
+## Plot clusters on tissue coordinates
+
+```{r spatial-clusters}
+if (!is.null(xcol) && !is.null(ycol)) {
+  df <- data.frame(seu@meta.data, cluster = Idents(seu))
+  ggplot(df, aes(x = .data[[xcol]], y = .data[[ycol]], color = cluster)) +
+    geom_point(size = 0.8) +
+    coord_fixed() +
+    scale_y_reverse() +
+    theme_classic() +
+    labs(title = "Clusters in tissue coordinates", x = xcol, y = ycol)
+} else {
+  cat("No recognizable coordinate columns found in meta.data.\\n")
+  cat("Available meta.data columns include:\\n")
+  print(head(colnames(seu@meta.data), 30))
+}
+```
+
+## Plot a marker gene on tissue coordinates
+
+```{r spatial-gene}
+if (!is.null(xcol) && !is.null(ycol)) {
+  gene <- "MBP"  # change to your marker of interest
+  if (gene %in% rownames(seu)) {
+    df <- data.frame(seu@meta.data, expr = FetchData(seu, vars = gene)[,1])
+    ggplot(df, aes(x = .data[[xcol]], y = .data[[ycol]], color = expr)) +
+      geom_point(size = 0.8) +
+      coord_fixed() +
+      scale_y_reverse() +
+      theme_classic() +
+      labs(title = paste(gene, "expression in tissue coordinates"), x = xcol, y = ycol)
+  } else {
+    cat("Gene ", gene, " not found. Try another marker (e.g., SNAP25, AQP4, P2RY12, GFAP, MOBP).\\n")
+  }
+}
+```
+
+# Save outputs
+
+```{r save}
+out_dir <- "outputs_human"
+dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
+
+saveRDS(seu, file.path(out_dir, "human_dlpfc_seurat.rds"))
+
+p_umap <- DimPlot(seu, reduction = "umap", label = TRUE) + NoLegend()
+ggsave(filename = file.path(out_dir, "umap_clusters.png"), plot = p_umap, width = 7, height = 5, dpi = 300)
+
+cat("Saved outputs to: ", out_dir, "\\n")
+```
+
+```{r session-info}
+sessionInfo()
+```
