@@ -1,0 +1,65 @@
+---
+title: "Human Brain EDA & Seurat"
+author: "Emily Ekstrum"
+date: ""
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    number_sections: true
+    theme: "cosmo"
+    df_print: paged
+params:
+  rds_path: "/Users/emilyekstrum/Desktop/zhangLab/data/MouseBrain_Data/10x_mousebrain_exp_count_meta.rds"
+  assay_name: "RNA"
+  min_cells: 3
+  min_features: 200
+  mt_prefix: "^(mt-|MT-)"
+  filter: true
+  nFeature_low: 200
+  nFeature_high: 6000
+  nCount_high: 40000
+  percent_mt_high: 15
+  clustering_resolution: 0.5
+  seed: 123
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,
+  fig.width = 8,
+  fig.height = 5
+)
+set.seed(params$seed)
+```
+
+
+
+```{r packages}
+pkgs <- c(
+  "Seurat",
+  "SpatialExperiment",
+  "STexampleData",
+  "ggspavis",
+  "scater",
+  "scarn",
+  "pheatmap",
+  "Matrix",
+  "ggplot2",
+  "dplyr",
+  "tibble",
+  "patchwork"
+)
+
+to_install <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
+if (length(to_install) > 0) {
+  install.packages(to_install, repos = "https://cloud.r-project.org")
+}
+
+# Load
+lapply(pkgs, library, character.only = TRUE)
+```
+
+
