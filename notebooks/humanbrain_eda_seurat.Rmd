@@ -35,7 +35,39 @@ knitr::opts_chunk$set(
 set.seed(params$seed)
 ```
 
+# investigate files
 
+```{r}
+library("rhdf5")
+bc_matrix <- h5ls("/Users/emilyekstrum/Desktop/zhangLab/data/DLPFC_Data/Sample151673/151673_filtered_feature_bc_matrix.h5")
+```
+
+```{r}
+head(bc_matrix)
+```
+
+```{r}
+cols_2 <- read.csv("/Users/emilyekstrum/Desktop/zhangLab/data/DLPFC_Data/Sample151673/DLPFC_spatial_3639cells_2cols.csv")
+head(cols_2)
+```
+
+
+```{r}
+mrna_count <- read.csv("/Users/emilyekstrum/Desktop/zhangLab/data/DLPFC_Data/Sample151673/LIBD_mrna_count_33538genes_3639cells.csv")
+head(mrna_count)
+```
+
+
+```{r}
+manual_annotation_3611 <- readRDS("/Users/emilyekstrum/Desktop/zhangLab/data/DLPFC_Data/Sample151673/Manual_annotation_3611cells.rds")
+head(manual_annotation_3611)
+```
+
+
+```{r}
+manual_annotation_3639 <- read.csv("/Users/emilyekstrum/Desktop/zhangLab/data/DLPFC_Data/Sample151673/Manual_annotation_3639cells.csv")
+head(manual_annotation_3639)
+```
 
 ```{r packages}
 pkgs <- c(
