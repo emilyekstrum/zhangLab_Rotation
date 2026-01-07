@@ -9,31 +9,28 @@ output:
     number_sections: true
     theme: cosmo
 params:
-  # Required
+  # gene expression
   h5_path: "/Users/emilyekstrum/Desktop/zhangLab/data/DLPFC_Data/Sample151673/151673_filtered_feature_bc_matrix.h5"
 
-  # Optional but recommended (spatial coordinates; typically 2 columns like x/y or row/col)
+  # spatial coordinates
   spatial_csv: "/Users/emilyekstrum/Desktop/zhangLab/data/DLPFC_Data/Sample151673/DLPFC_spatial_3639cells_2cols.csv"
 
-  # Optional manual annotations (CSV preferred); leave "" to skip
+  # manual annotations
   annotation_csv: "/Users/emilyekstrum/Desktop/zhangLab/data/DLPFC_Data/Sample151673/Manual_annotation_3639cells.csv"
 
-  # Basic Seurat object filters
+  # for seurat object
   assay_name: "RNA"
   min_cells: 3
   min_features: 200
 
-  # Human mitochondrial prefix
-  mt_prefix: "^MT-"
-
-  # QC filtering (toggle + starting thresholds)
+  # filtering params
   filter: true
   nFeature_low: 200
   nFeature_high: 7500
   nCount_high: 60000
   percent_mt_high: 20
 
-  # Downstream analysis
+  # dim reduction params
   n_pcs: 30
   clustering_resolution: 0.5
   seed: 123
@@ -192,6 +189,8 @@ seu
 VlnPlot(seu, features = c("nFeature_RNA","nCount_RNA"), pt.size = 0.1, ncol = 2)
 FeatureScatter(seu, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
 ```
+
+
 
 ## Mitochondrial fraction
 
