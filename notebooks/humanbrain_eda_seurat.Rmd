@@ -57,7 +57,7 @@ This report reproduces the same Seurat pipeline you ran for the mouse brain data
 2. Optionally merge spatial coordinates and manual annotations into `meta.data`
 3. EDA/QC: library size, detected genes, mitochondrial fraction
 4. Optional filtering
-5. Standard Seurat workflow: Normalize → HVFs → Scale → PCA → Neighbors → Clusters → UMAP
+<!-- 5. Standard Seurat workflow: Normalize → HVFs → Scale → PCA → Neighbors → Clusters → UMAP -->
 6. Spatial visualization using coordinate scatter plots (works even without histology images)
 
 **Inputs**
@@ -227,25 +227,32 @@ seu
 # Standard Seurat workflow (PCA → neighbors → clusters → UMAP)
 
 ```{r seurat-workflow}
-seu <- NormalizeData(seu)
-seu <- FindVariableFeatures(seu, selection.method = "vst", nfeatures = 2000)
-seu <- ScaleData(seu, features = rownames(seu))
-seu <- RunPCA(seu, features = VariableFeatures(seu))
+seurat_sct <- SCTransform(
+  seu,
+  assay = "RNA",          # use the raw counts assay
+  vst.flavor = "v2",  
+  variable.features.n = 2000,
+  verbose = FALSE
+)
 
-Reductions(seu)
-ElbowPlot(seu, ndims = max(50, params$n_pcs))
+# make SCT the default assay for downstream PCA/UMAP
+DefaultAssay(seurat_sct) <- "SCT"
+seurat_sct <- RunPCA(seurat_sct, features = VariableFeatures(seurat_sct))
+
+Reductions(seurat_sct)
+ElbowPlot(seurat_sct, ndims = max(50, params$n_pcs))
 ```
 
 ```{r neighbors-cluster-umap}
 pcs <- 1:params$n_pcs
 
-seu <- FindNeighbors(seu, dims = pcs)
-message("Graphs present: ", paste(names(seu@graphs), collapse = ", "))
+seurat_sct <- FindNeighbors(seurat_sct, dims = pcs)
+message("Graphs present: ", paste(names(seurat_sct@graphs), collapse = ", "))
 
-seu <- FindClusters(seu, resolution = params$clustering_resolution)
-seu <- RunUMAP(seu, dims = pcs)
+seurat_sct <- FindClusters(seurat_sct, resolution = params$clustering_resolution)
+seurat_sct <- RunUMAP(seurat_sct, dims = pcs)
 
-DimPlot(seu, reduction = "umap", label = TRUE) + NoLegend()
+DimPlot(seurat_sct, reduction = "umap", label = TRUE) + NoLegend()
 ```
 
 # Spatial visualization (coordinate scatter plots)
@@ -255,7 +262,7 @@ This does **not** require histology images. It just uses whatever coordinate col
 ## Detect coordinate columns
 
 ```{r coords-detect}
-meta_cols <- colnames(seu@meta.data)
+meta_cols <- colnames(seurat_sct@meta.data)
 coord_candidates <- list(
   x = c("x","imagecol","col","pxl_col_in_fullres","array_col"),
   y = c("y","imagerow","row","pxl_row_in_fullres","array_row")
@@ -277,7 +284,7 @@ list(xcol = xcol, ycol = ycol)
 
 ```{r spatial-clusters}
 if (!is.null(xcol) && !is.null(ycol)) {
-  df <- data.frame(seu@meta.data, cluster = Idents(seu))
+  df <- data.frame(seurat_sct@meta.data, cluster = Idents(seurat_sct))
   ggplot(df, aes(x = .data[[xcol]], y = .data[[ycol]], color = cluster)) +
     geom_point(size = 0.8) +
     coord_fixed() +
@@ -287,7 +294,7 @@ if (!is.null(xcol) && !is.null(ycol)) {
 } else {
   cat("No recognizable coordinate columns found in meta.data.\\n")
   cat("Available meta.data columns include:\\n")
-  print(head(colnames(seu@meta.data), 30))
+  print(head(colnames(seurat_sct@meta.data), 30))
 }
 ```
 
@@ -295,9 +302,9 @@ if (!is.null(xcol) && !is.null(ycol)) {
 
 ```{r spatial-gene}
 if (!is.null(xcol) && !is.null(ycol)) {
-  gene <- "MBP"  # change to your marker of interest
-  if (gene %in% rownames(seu)) {
-    df <- data.frame(seu@meta.data, expr = FetchData(seu, vars = gene)[,1])
+  gene <- "MBP"  # change 
+  if (gene %in% rownames(seurat_sct)) {
+    df <- data.frame(seurat_sct@meta.data, expr = FetchData(seurat_sct, vars = gene)[,1])
     ggplot(df, aes(x = .data[[xcol]], y = .data[[ycol]], color = expr)) +
       geom_point(size = 0.8) +
       coord_fixed() +

@@ -225,13 +225,22 @@ ggplot(df, aes(x = x, y = y, color = expr)) +
 # Dim reduction
 
 ```{r seurat-workflow}
-mouse_seurat_norm <- NormalizeData(mouse_seurat)
-mouse_seurat_norm_VF <- FindVariableFeatures(mouse_seurat_norm, selection.method = "vst", nfeatures = 2000)
-mouse_seurat_norm_VF_scale <- ScaleData(mouse_seurat_norm_VF, features = rownames(mouse_seurat_norm_VF))
-mouse_seurat_PCA <- RunPCA(mouse_seurat_norm_VF_scale, features = VariableFeatures(mouse_seurat_norm_VF_scale))
+mouse_seurat_sct <- SCTransform(
+  mouse_seurat,
+  assay = "RNA",          # use the raw counts assay
+  vst.flavor = "v2",      
+  variable.features.n = 2000,
+  verbose = FALSE
+)
+
+# make SCT the default assay for downstream PCA/UMAP
+DefaultAssay(mouse_seurat_sct) <- "SCT"
+mouse_seurat_PCA <- RunPCA(mouse_seurat_sct, features = VariableFeatures(mouse_seurat_sct))
 
 ElbowPlot(mouse_seurat_PCA)
 ```
+
+
 ```{r}
 #plot PCA 
 DimPlot(
@@ -240,6 +249,7 @@ DimPlot(
   pt.size = 0.6
 ) + ggtitle("PCA of spatial transcriptomics spots")
 ```
+
 ```{r}
 #color PCA by genes & counts
 FeaturePlot(mouse_seurat_PCA, reduction = "pca", features = "nFeature_RNA")
