@@ -189,14 +189,60 @@ if (isTRUE(params$filter)) {
   mouse_seurat <- subset(mouse_seurat, cells = rownames(mouse_seurat@meta.data)[expr])
 }
 
-mouse_seurat
+# Check for NA/NaN/Inf values in count matrix
+counts_mat <- GetAssayData(mouse_seurat, assay = "RNA", layer = "counts")
+
+bad <- is.na(counts_mat) | is.infinite(counts_mat)
+if (any(bad)) {
+  warning("Found NA/Inf in count matrix. Replacing with 0.")
+  counts_mat[bad] <- 0
+  mouse_seurat <- SetAssayData(mouse_seurat, assay = "RNA", layer = "counts", new.data = counts_mat)
+}
+
+
+# Remove spots with zero total counts (can cause log_umi issues)
+zero_count_spots <- which(mouse_seurat$nCount_RNA == 0)
+if (length(zero_count_spots) > 0) {
+  warning(paste("Removing", length(zero_count_spots), "spots with zero total counts"))
+  cells_to_keep <- setdiff(colnames(mouse_seurat), names(zero_count_spots))
+  mouse_seurat <- subset(mouse_seurat, cells = cells_to_keep)
+}
+
+# Optional: Filter out low quality spots (uncomment if needed)
+# seurat_obj <- subset(seurat_obj, subset = nFeature_RNA > 200 & nFeature_RNA < 8000 & percent.mt < 20)
+
+# Print summary statistics to verify data quality
+cat("Data quality summary:\n")
+cat("Number of spots:", ncol(mouse_seurat), "\n")
+cat("Number of genes:", nrow(mouse_seurat), "\n")
+cat("nCount_RNA range:", range(mouse_seurat$nCount_RNA), "\n")
+cat("nFeature_RNA range:", range(mouse_seurat$nFeature_RNA), "\n")
+cat("Percent MT range:", range(mouse_seurat$percent.mt), "\n")
+
+# variance stabilizing transformation using SCTransform
+mouse_seurat_sct <- SCTransform(mouse_seurat,
+                          vst.flavor = "v2",
+                          variable.features.n = 10000,
+                          vars.to.regress = c("percent.mt"),
+                          return.only.var.genes = FALSE,
+                          verbose = FALSE)
+
+mouse_seurat_sct
 ```
+
+
+```{r}
+mouse_seurat_sct$nCount_RNA <- Matrix::colSums(mouse_seurat_sct@assays$RNA@counts)
+summary(mouse_seurat_sct$nCount_RNA)
+
+```
+
 
 
 # Visualize on x y coords
 ```{r}
 #head(mouse_seurat@meta.data[, c("x","y")])
-df <- data.frame(mouse_seurat@meta.data, cluster = Idents(mouse_seurat))
+df <- data.frame(mouse_seurat_sct@meta.data, cluster = Idents(mouse_seurat_sct))
 ggplot(df, aes(x = x, y = y, color = cluster)) +
   geom_point(size = 0.8) +
   coord_fixed() +
@@ -210,7 +256,7 @@ ggplot(df, aes(x = x, y = y, color = cluster)) +
 # look at a specific gene in the tissue coordinates
 ```{r}
 gene <- "Gm1992"  # change
-df$expr <- FetchData(mouse_seurat, vars = gene)[,1]
+df$expr <- FetchData(mouse_seurat_sct, vars = gene)[,1]
 
 ggplot(df, aes(x = x, y = y, color = expr)) +
   geom_point(size = 0.8) +
@@ -225,24 +271,16 @@ ggplot(df, aes(x = x, y = y, color = expr)) +
 # Dim reduction
 
 ```{r seurat-workflow}
-mouse_seurat_sct <- SCTransform(
-  mouse_seurat,
-  assay = "RNA",          # use the raw counts assay
-  vst.flavor = "v2",      
-  variable.features.n = 2000,
-  verbose = FALSE
-)
-
 # make SCT the default assay for downstream PCA/UMAP
 DefaultAssay(mouse_seurat_sct) <- "SCT"
 mouse_seurat_PCA <- RunPCA(mouse_seurat_sct, features = VariableFeatures(mouse_seurat_sct))
-
-ElbowPlot(mouse_seurat_PCA)
 ```
 
 
 ```{r}
 #plot PCA 
+ElbowPlot(mouse_seurat_PCA)
+
 DimPlot(
   mouse_seurat_PCA,
   reduction = "pca",
