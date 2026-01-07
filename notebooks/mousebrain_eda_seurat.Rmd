@@ -141,6 +141,18 @@ mouse_seurat <- CreateSeuratObject(
   min.features = 200
 )
 
+# add mitochondrial percentage
+mt_features <- grep(params$mt_prefix, rownames(mouse_seurat), value = TRUE)
+
+if (length(mt_features) > 0) {
+  mouse_seurat[["percent.mt"]] <- PercentageFeatureSet(mouse_seurat, features = mt_features)
+} else {
+  warning(paste0(
+    "No mitochondrial genes matched params$mt_prefix = '", params$mt_prefix,
+    "'. percent.mt will not be computed."
+  ))
+}
+
 mouse_seurat@meta.data$imagerow <- mouse_seurat$y
 mouse_seurat@meta.data$imagecol <- mouse_seurat$x
 
@@ -178,9 +190,10 @@ if (isTRUE(params$filter)) {
     percent_mt_high = params$percent_mt_high
   ))
 
-  expr <- mouse_seurat@meta.data$nFeature_RNA >= params$nFeature_low &
-          mouse_seurat@meta.data$nFeature_RNA <= params$nFeature_high &
-          mouse_seurat@meta.data$nCount_RNA <= params$nCount_high
+expr <- mouse_seurat@meta.data$nFeature_RNA >= params$nFeature_low &
+        mouse_seurat@meta.data$nFeature_RNA <= params$nFeature_high &
+        mouse_seurat@meta.data$nCount_RNA <= params$nCount_high &
+        mouse_seurat@meta.data$percent.mt <= params$percent_mt_high
 
   if ("percent.mt" %in% colnames(mouse_seurat@meta.data)) {
     expr <- expr & (mouse_seurat@meta.data$percent.mt <= params$percent_mt_high)
@@ -232,8 +245,17 @@ mouse_seurat_sct
 
 
 ```{r}
-mouse_seurat_sct$nCount_RNA <- Matrix::colSums(mouse_seurat_sct@assays$RNA@counts)
+# recompute nCount_RNA from counts matrix
+counts_mat <- GetAssayData(mouse_seurat_sct, assay = "RNA", layer = "counts")
+mouse_seurat_sct$nCount_RNA <- Matrix::colSums(counts_mat)
 summary(mouse_seurat_sct$nCount_RNA)
+```
+
+```{r}
+# recompute nCount_SCT from SCT counts matrix
+sct_mat <- GetAssayData(mouse_seurat_sct, assay = "SCT", layer = "counts")
+mouse_seurat_sct$nCount_SCT <- Matrix::colSums(sct_mat)
+summary(mouse_seurat_sct$nCount_SCT)
 
 ```
 

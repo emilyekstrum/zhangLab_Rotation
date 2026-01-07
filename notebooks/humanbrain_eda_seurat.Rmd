@@ -28,6 +28,7 @@ params:
   nFeature_low: 200
   nFeature_high: 7500
   nCount_high: 60000
+  mt_prefix: "^(mt-|MT-)"
   percent_mt_high: 20
 
   # dim reduction params
@@ -178,82 +179,120 @@ seu <- CreateSeuratObject(
   meta.data = meta
 )
 
+# add mitochondrial percentage
+mt_features <- grep(params$mt_prefix, rownames(seu), value = TRUE)
+
+if (length(mt_features) > 0) {
+  mouse_seurat[["percent.mt"]] <- PercentageFeatureSet(seu, features = mt_features)
+} else {
+  warning(paste0(
+    "No mitochondrial genes matched params$mt_prefix = '", params$mt_prefix,
+    "'. percent.mt will not be computed."
+  ))
+}
+
 seu
 ```
 
 # EDA and QC
 
-## Library size, detected genes
-
 ```{r qc-basic}
-VlnPlot(seu, features = c("nFeature_RNA","nCount_RNA"), pt.size = 0.1, ncol = 2)
-FeatureScatter(seu, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+features_to_plot <- c("nFeature_RNA", "nCount_RNA", "percent.mt")
+VlnPlot(seu, features = features_to_plot, ncol = length(features_to_plot), pt.size = 0.1)
 ```
 
 
-
-## Mitochondrial fraction
-
-```{r qc-mito}
-mt_genes <- grep(params$mt_prefix, rownames(seu), value = TRUE)
-if (length(mt_genes) > 0) {
-  seu[["percent.mt"]] <- PercentageFeatureSet(seu, features = mt_genes)
-  VlnPlot(seu, features = "percent.mt", pt.size = 0.1)
-  FeatureScatter(seu, feature1 = "nCount_RNA", feature2 = "percent.mt")
+```{r qc-scatter}
+p_a <- FeatureScatter(seu, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+if ("percent.mt" %in% colnames(seu@meta.data)) {
+  p_b <- FeatureScatter(seu, feature1 = "nCount_RNA", feature2 = "percent.mt")
+  p_a + p_b
 } else {
-  message("No mitochondrial genes matched pattern: ", params$mt_prefix)
+  p_a
 }
 ```
 
-# Optional filtering
+# filtering
 
-```{r filtering}
+```{r}
 if (isTRUE(params$filter)) {
-  keep <- seu$nFeature_RNA >= params$nFeature_low &
-          seu$nFeature_RNA <= params$nFeature_high &
-          seu$nCount_RNA   <= params$nCount_high
+  message("Filtering enabled with thresholds:")
+  print(list(
+    nFeature_low = params$nFeature_low,
+    nFeature_high = params$nFeature_high,
+    nCount_high = params$nCount_high,
+    percent_mt_high = params$percent_mt_high
+  ))
+
+expr <- seu@meta.data$nFeature_RNA >= params$nFeature_low &
+        seu@meta.data$nFeature_RNA <= params$nFeature_high &
+        seu@meta.data$nCount_RNA <= params$nCount_high &
+        seu@meta.data$percent.mt <= params$percent_mt_high
 
   if ("percent.mt" %in% colnames(seu@meta.data)) {
-    keep <- keep & (seu$percent.mt <= params$percent_mt_high)
+    expr <- expr & (seu@meta.data$percent.mt <= params$percent_mt_high)
   }
 
-  message("Keeping ", sum(keep), " / ", length(keep), " cells after QC filters.")
-  seu <- subset(seu, cells = colnames(seu)[keep])
+  seu <- subset(seu, cells = rownames(seu@meta.data)[expr])
 }
 
-seu
+# Check for NA/NaN/Inf values in count matrix
+counts_mat <- GetAssayData(seu, assay = "RNA", layer = "counts")
+
+bad <- is.na(counts_mat) | is.infinite(counts_mat)
+if (any(bad)) {
+  warning("Found NA/Inf in count matrix. Replacing with 0.")
+  counts_mat[bad] <- 0
+  seu <- SetAssayData(seu, assay = "RNA", layer = "counts", new.data = counts_mat)
+}
+
+
+# Remove spots with zero total counts (can cause log_umi issues)
+zero_count_spots <- which(seu$nCount_RNA == 0)
+if (length(zero_count_spots) > 0) {
+  warning(paste("Removing", length(zero_count_spots), "spots with zero total counts"))
+  cells_to_keep <- setdiff(colnames(seu), names(zero_count_spots))
+  seu <- subset(seu, cells = cells_to_keep)
+}
+
+# Optional: Filter out low quality spots (uncomment if needed)
+# seurat_obj <- subset(seurat_obj, subset = nFeature_RNA > 200 & nFeature_RNA < 8000 & percent.mt < 20)
+
+# Print summary statistics to verify data quality
+cat("Data quality summary:\n")
+cat("Number of spots:", ncol(seu), "\n")
+cat("Number of genes:", nrow(seu), "\n")
+cat("nCount_RNA range:", range(seu$nCount_RNA), "\n")
+cat("nFeature_RNA range:", range(seu$nFeature_RNA), "\n")
+cat("Percent MT range:", range(seu$percent.mt), "\n")
+
+# variance stabilizing transformation using SCTransform
+seu_sct <- SCTransform(seu,
+                          vst.flavor = "v2",
+                          variable.features.n = 10000,
+                          vars.to.regress = c("percent.mt"),
+                          return.only.var.genes = FALSE,
+                          verbose = FALSE)
+
+seu_sct
 ```
 
-# Standard Seurat workflow (PCA → neighbors → clusters → UMAP)
 
-```{r seurat-workflow}
-seurat_sct <- SCTransform(
-  seu,
-  assay = "RNA",          # use the raw counts assay
-  vst.flavor = "v2",  
-  variable.features.n = 2000,
-  verbose = FALSE
-)
-
-# make SCT the default assay for downstream PCA/UMAP
-DefaultAssay(seurat_sct) <- "SCT"
-seurat_sct <- RunPCA(seurat_sct, features = VariableFeatures(seurat_sct))
-
-Reductions(seurat_sct)
-ElbowPlot(seurat_sct, ndims = max(50, params$n_pcs))
+```{r}
+# recompute nCount_RNA from counts matrix
+counts_mat <- GetAssayData(seu_sct, assay = "RNA", layer = "counts")
+seu_sct$nCount_RNA <- Matrix::colSums(counts_mat)
+summary(seu_sct$nCount_RNA)
 ```
 
-```{r neighbors-cluster-umap}
-pcs <- 1:params$n_pcs
+```{r}
+# recompute nCount_SCT from SCT counts matrix
+sct_mat <- GetAssayData(seu_sct, assay = "SCT", layer = "counts")
+seu_sct$nCount_SCT <- Matrix::colSums(sct_mat)
+summary(mouse_seurat_sct$nCount_SCT)
 
-seurat_sct <- FindNeighbors(seurat_sct, dims = pcs)
-message("Graphs present: ", paste(names(seurat_sct@graphs), collapse = ", "))
-
-seurat_sct <- FindClusters(seurat_sct, resolution = params$clustering_resolution)
-seurat_sct <- RunUMAP(seurat_sct, dims = pcs)
-
-DimPlot(seurat_sct, reduction = "umap", label = TRUE) + NoLegend()
 ```
+
 
 # Spatial visualization (coordinate scatter plots)
 
@@ -262,7 +301,7 @@ This does **not** require histology images. It just uses whatever coordinate col
 ## Detect coordinate columns
 
 ```{r coords-detect}
-meta_cols <- colnames(seurat_sct@meta.data)
+meta_cols <- colnames(seu_sct@meta.data)
 coord_candidates <- list(
   x = c("x","imagecol","col","pxl_col_in_fullres","array_col"),
   y = c("y","imagerow","row","pxl_row_in_fullres","array_row")
@@ -284,7 +323,7 @@ list(xcol = xcol, ycol = ycol)
 
 ```{r spatial-clusters}
 if (!is.null(xcol) && !is.null(ycol)) {
-  df <- data.frame(seurat_sct@meta.data, cluster = Idents(seurat_sct))
+  df <- data.frame(seu_sct@meta.data, cluster = Idents(seu_sct))
   ggplot(df, aes(x = .data[[xcol]], y = .data[[ycol]], color = cluster)) +
     geom_point(size = 0.8) +
     coord_fixed() +
@@ -294,7 +333,7 @@ if (!is.null(xcol) && !is.null(ycol)) {
 } else {
   cat("No recognizable coordinate columns found in meta.data.\\n")
   cat("Available meta.data columns include:\\n")
-  print(head(colnames(seurat_sct@meta.data), 30))
+  print(head(colnames(seu_sct@meta.data), 30))
 }
 ```
 
@@ -303,8 +342,8 @@ if (!is.null(xcol) && !is.null(ycol)) {
 ```{r spatial-gene}
 if (!is.null(xcol) && !is.null(ycol)) {
   gene <- "MBP"  # change 
-  if (gene %in% rownames(seurat_sct)) {
-    df <- data.frame(seurat_sct@meta.data, expr = FetchData(seurat_sct, vars = gene)[,1])
+  if (gene %in% rownames(seu_sct)) {
+    df <- data.frame(seu_sct@meta.data, expr = FetchData(seu_sct, vars = gene)[,1])
     ggplot(df, aes(x = .data[[xcol]], y = .data[[ycol]], color = expr)) +
       geom_point(size = 0.8) +
       coord_fixed() +
@@ -315,6 +354,61 @@ if (!is.null(xcol) && !is.null(ycol)) {
     cat("Gene ", gene, " not found. Try another marker (e.g., SNAP25, AQP4, P2RY12, GFAP, MOBP).\\n")
   }
 }
+```
+
+# dim reduction
+```{r seurat-workflow}
+# make SCT the default assay for downstream PCA/UMAP
+DefaultAssay(seu_sct) <- "SCT"
+seu_PCA <- RunPCA(seu_sct, features = VariableFeatures(seu_sct))
+```
+
+
+```{r}
+#plot PCA 
+ElbowPlot(seu_PCA)
+
+DimPlot(
+  seu_PCA,
+  reduction = "pca",
+  pt.size = 0.6
+) + ggtitle("PCA of spatial transcriptomics spots")
+```
+
+
+```{r}
+#color PCA by genes & counts
+FeaturePlot(seu_PCA, reduction = "pca", features = "nFeature_RNA")
+FeaturePlot(seu_PCA, reduction = "pca", features = "nCount_RNA")
+```
+
+
+```{r}
+# color PCA by spatial coordinates
+FeaturePlot(seu_PCA, reduction = "pca", features = "x")
+FeaturePlot(seu_PCA, reduction = "pca", features = "y")
+
+```
+
+
+```{r}
+# genes contributing to PCs
+VizDimLoadings(seu_PCA, dims = 1:2, reduction = "pca")
+```
+
+
+```{r}
+# top genes per PC
+DimHeatmap(seu_PCA, dims = 1:6, cells = 500, balanced = TRUE)
+
+```
+
+```{r umap-cluster}
+seu_PCA <- FindNeighbors(seu_PCA, dims = 1:30)
+seu_PCA <- FindClusters(seu_PCA, resolution = params$clustering_resolution)
+seu_UMAP <- RunUMAP(seu_PCA, dims = 1:30)
+
+DimPlot(seu_UMAP, reduction = "umap", label = TRUE) + NoLegend()
 ```
 
 # Save outputs
