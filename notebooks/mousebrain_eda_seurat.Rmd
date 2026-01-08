@@ -43,7 +43,7 @@ set.seed(params$seed)
 2. Exploratory data analysis (EDA) on the expression matrix and metadata
 3. Creates a seurat object
 4. QC, normalization, dimensionality reduction, and clustering
-5. Saves outputs as RDS file
+5. Saves seurat object as RDS file
 
 > **Input**: `r params$rds_path`
 
@@ -188,11 +188,11 @@ FeatureScatter(mouse_seurat, "nCount_RNA", "nFeature_RNA")
 FeatureScatter(mouse_seurat, "nCount_RNA", "percent.mt")
 FeatureScatter(mouse_seurat, "nFeature_RNA", "percent.mt")
 ```
-nCount_RNA vs nFeature_RNA: Positive correlation & tight monotonic relationship (r^2 0.93)
+nCount_RNA vs nFeature_RNA: Positive correlation & tight monotonic relationship (r 0.93)
   - spots with higher counts tend to have more detected genes.
-nCount_RNA vs percent.mt: No strong correlation (r^2 -0.04)
+nCount_RNA vs percent.mt: No strong correlation (r -0.04)
   - spots with high counts do not necessarily have high mitochondrial percentage
-nFeature_RNA vs percent.mt: No strong correlation (r^2 -0.15)
+nFeature_RNA vs percent.mt: No strong correlation (r -0.15)
   - spots with more detected genes do not necessarily have high mitochondrial percentage
 
 

@@ -37,6 +37,7 @@ params:
   seed: 123
 ---
 
+# file setup
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(
   echo = TRUE,
@@ -50,55 +51,63 @@ set.seed(params$seed)
 `%||%` <- function(a, b) if (!is.null(a)) a else b
 ```
 
-# Overview
+# Human Brain EDA & Seurat Analysis
 
-This report reproduces the same Seurat pipeline you ran for the mouse brain data, but for the **human brain (DLPFC) dataset** stored as a 10x `.h5` matrix:
-
-1. Load 10x counts (`Read10X_h5`)
-2. Optionally merge spatial coordinates and manual annotations into `meta.data`
+1. Loads in 10x visium human brain spatial transcriptomics data from H5 file
+2. merges spatial coordinates and manual annotations into `meta.data`
 3. EDA/QC: library size, detected genes, mitochondrial fraction
-4. Optional filtering
-<!-- 5. Standard Seurat workflow: Normalize → HVFs → Scale → PCA → Neighbors → Clusters → UMAP -->
-6. Spatial visualization using coordinate scatter plots (works even without histology images)
+4. Saves seurat object as RDA file
 
 **Inputs**
 - Counts: `r params$h5_path`
-- Spatial coords (optional): `r params$spatial_csv`
-- Manual annotations (optional): `r params$annotation_csv`
+- Spatial coords: `r params$spatial_csv`
+- Manual annotations: `r params$annotation_csv`
 
-# Packages
+# load in packages
 
 ```{r packages}
-pkgs <- c("Seurat","Matrix","ggplot2","dplyr","tibble","patchwork","readr", "hdf5r")
+pkgs <- c("Seurat",
+          "Matrix",
+          "ggplot2",
+          "dplyr",
+          "tibble",
+          "patchwork",
+          "readr", 
+          "hdf5r")
+
 to_install <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
-if (length(to_install) > 0) install.packages(to_install, repos = "https://cloud.r-project.org")
+if (length(to_install) > 0) {
+  install.packages(to_install, repos = "https://cloud.r-project.org")
+}
+
 lapply(pkgs, library, character.only = TRUE)
 ```
 
 # Load counts from 10x H5
-
 ```{r load-h5}
 h5_path <- params$h5_path
 stopifnot(file.exists(h5_path))
 
 counts <- Read10X_h5(h5_path)
 
-# Read10X_h5 may return a matrix OR a named list of matrices (e.g., "Gene Expression")
+# handle a matrix or a named list of matrices 
 if (is.list(counts)) {
   message("Read10X_h5 returned a list with names: ", paste(names(counts), collapse = ", "))
-  # Prefer common key names
+  # try to find the gene expression matrix
   key <- intersect(names(counts), c("Gene Expression","RNA","gene_expression","GeneExpression"))
   if (length(key) == 0) key <- names(counts)[1]
   counts <- counts[[key[1]]]
 }
 
+# 
 stopifnot(inherits(counts, c("dgCMatrix","matrix")))
-dim(counts)
+dim(counts) # genes x cells
 ```
 
-# Load optional metadata (spatial coords + manual annotations)
+Counts matrix with `r nrow(counts)` genes and `r ncol(counts)` cells loaded
 
-This section tries to merge metadata by cell barcode when possible. If no explicit barcode column is found, it falls back to matching by row order only when the row count matches the number of cells.
+# Load in metadata (spatial coords + manual annotations)
+merges metadata by cell barcode 
 
 ```{r load-meta}
 load_csv_if_exists <- function(path) {
@@ -125,8 +134,9 @@ if (!is.null(annot_df)) {
 }
 ```
 
-## Merge helper
 
+
+## Merge helper
 ```{r merge-helper}
 guess_barcode_col <- function(df) {
   if (is.null(df)) return(NULL)
@@ -162,8 +172,8 @@ merge_meta <- function(meta, df, cells) {
 }
 ```
 
-# Create Seurat object
 
+# Create Seurat object
 ```{r create-seurat}
 cells <- colnames(counts)
 meta <- data.frame(row.names = cells)
@@ -171,7 +181,7 @@ meta <- data.frame(row.names = cells)
 meta <- merge_meta(meta, spatial_df, cells)
 meta <- merge_meta(meta, annot_df,   cells)
 
-seu <- CreateSeuratObject(
+human_seurat <- CreateSeuratObject(
   counts = counts,
   assay = params$assay_name,
   min.cells = params$min_cells,
@@ -180,10 +190,10 @@ seu <- CreateSeuratObject(
 )
 
 # add mitochondrial percentage
-mt_features <- grep(params$mt_prefix, rownames(seu), value = TRUE)
+mt_features <- grep(params$mt_prefix, rownames(human_seurat), value = TRUE)
 
 if (length(mt_features) > 0) {
-  mouse_seurat[["percent.mt"]] <- PercentageFeatureSet(seu, features = mt_features)
+  human_seurat[["percent.mt"]] <- PercentageFeatureSet(human_seurat, features = mt_features)
 } else {
   warning(paste0(
     "No mitochondrial genes matched params$mt_prefix = '", params$mt_prefix,
@@ -191,7 +201,7 @@ if (length(mt_features) > 0) {
   ))
 }
 
-seu
+human_seurat
 ```
 
 # EDA and QC
@@ -200,21 +210,39 @@ seu
 features_to_plot <- c("nFeature_RNA", "nCount_RNA", "percent.mt")
 VlnPlot(seu, features = features_to_plot, ncol = length(features_to_plot), pt.size = 0.1)
 ```
-
+nFeature_RNA: Number of detected genes per spot
+  - Even spread of genes detected per spot
+nCount_RNA: Total UMI (unique molecular identifiers) counts/reads per spot
+percent.mt: Percentage of mitochondrial gene expression per spot (if mitochondrial genes were found)
+  - Most spots have low mitochondrial percentage (< 20%), indicating good data
 
 ```{r qc-scatter}
-p_a <- FeatureScatter(seu, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
-if ("percent.mt" %in% colnames(seu@meta.data)) {
-  p_b <- FeatureScatter(seu, feature1 = "nCount_RNA", feature2 = "percent.mt")
-  p_a + p_b
-} else {
-  p_a
-}
+FeatureScatter(human_seurat, "nCount_RNA", "nFeature_RNA")
+FeatureScatter(human_seurat, "nCount_RNA", "percent.mt")
+FeatureScatter(human_seurat, "nFeature_RNA", "percent.mt")
 ```
+nCount_RNA vs nFeature_RNA: Positive correlation & tight monotonic relationship (r 0.99)
+  - spots with higher counts tend to have more detected genes.
+nCount_RNA vs percent.mt: No strong correlation (r -0.09)
+  - spots with high counts do not necessarily have high mitochondrial percentage
+nFeature_RNA vs percent.mt: No strong correlation (r -0.16)
+  - spots with more detected genes do not necessarily have high mitochondrial percentage
+
+
+# Spatial dist of mt percentage
+```{r}
+# plot spatial distribution of mitochondrial percentage
+ggplot(human_seurat@meta.data, aes(x = imagecol, y = imagerow, color = percent.mt)) +
+  geom_point(size = 0.6) +
+  coord_fixed() +
+  scale_y_reverse() +
+  theme_classic()
+```
+No strong spatial pattern of mitochondrial percentage across the tissue section, indicating no localized regions of high mitochondrial content
 
 # filtering
-
 ```{r}
+# print filtering params used
 if (isTRUE(params$filter)) {
   message("Filtering enabled with thresholds:")
   print(list(
@@ -224,84 +252,78 @@ if (isTRUE(params$filter)) {
     percent_mt_high = params$percent_mt_high
   ))
 
-expr <- seu@meta.data$nFeature_RNA >= params$nFeature_low &
-        seu@meta.data$nFeature_RNA <= params$nFeature_high &
-        seu@meta.data$nCount_RNA <= params$nCount_high &
-        seu@meta.data$percent.mt <= params$percent_mt_high
+  # filter spots based on QC metrics
+expr <- human_seurat@meta.data$nFeature_RNA >= params$nFeature_low &
+        human_seurat@meta.data$nFeature_RNA <= params$nFeature_high &
+        human_seurat@meta.data$nCount_RNA <= params$nCount_high &
+        human_seurat@meta.data$percent.mt <= params$percent_mt_high
 
   if ("percent.mt" %in% colnames(seu@meta.data)) {
-    expr <- expr & (seu@meta.data$percent.mt <= params$percent_mt_high)
+    expr <- expr & (human_seurat@meta.data$percent.mt <= params$percent_mt_high)
   }
 
-  seu <- subset(seu, cells = rownames(seu@meta.data)[expr])
+  human_seurat <- subset(human_seurat, cells = rownames(human_seurat@meta.data)[expr])
 }
 
 # Check for NA/NaN/Inf values in count matrix
-counts_mat <- GetAssayData(seu, assay = "RNA", layer = "counts")
+counts_mat <- GetAssayData(human_seurat, assay = "RNA", layer = "counts")
 
 bad <- is.na(counts_mat) | is.infinite(counts_mat)
 if (any(bad)) {
   warning("Found NA/Inf in count matrix. Replacing with 0.")
   counts_mat[bad] <- 0
-  seu <- SetAssayData(seu, assay = "RNA", layer = "counts", new.data = counts_mat)
+  human_seurat <- SetAssayData(human_seurat, assay = "RNA", layer = "counts", new.data = counts_mat)
 }
 
 
 # Remove spots with zero total counts (can cause log_umi issues)
-zero_count_spots <- which(seu$nCount_RNA == 0)
+zero_count_spots <- which(human_seurat$nCount_RNA == 0)
 if (length(zero_count_spots) > 0) {
   warning(paste("Removing", length(zero_count_spots), "spots with zero total counts"))
-  cells_to_keep <- setdiff(colnames(seu), names(zero_count_spots))
-  seu <- subset(seu, cells = cells_to_keep)
+  cells_to_keep <- setdiff(colnames(human_seurat), names(zero_count_spots))
+  human_seurat <- subset(human_seurat, cells = cells_to_keep)
 }
 
-# Optional: Filter out low quality spots (uncomment if needed)
-# seurat_obj <- subset(seurat_obj, subset = nFeature_RNA > 200 & nFeature_RNA < 8000 & percent.mt < 20)
+# filter out low quality spots 
+# human_seurat <- subset(human_seurat, subset = nFeature_RNA > 200 & nFeature_RNA < 8000 & percent.mt < 20)
 
-# Print summary statistics to verify data quality
+# summary stats for filtering
 cat("Data quality summary:\n")
-cat("Number of spots:", ncol(seu), "\n")
-cat("Number of genes:", nrow(seu), "\n")
-cat("nCount_RNA range:", range(seu$nCount_RNA), "\n")
-cat("nFeature_RNA range:", range(seu$nFeature_RNA), "\n")
-cat("Percent MT range:", range(seu$percent.mt), "\n")
+cat("Number of spots:", ncol(human_seurat), "\n")
+cat("Number of genes:", nrow(human_seurat), "\n")
+cat("nCount_RNA range:", range(human_seurat$nCount_RNA), "\n")
+cat("nFeature_RNA range:", range(human_seurat$nFeature_RNA), "\n")
+cat("Percent MT range:", range(human_seurat$percent.mt), "\n")
 
 # variance stabilizing transformation using SCTransform
-seu_sct <- SCTransform(seu,
+human_seurat_sct <- SCTransform(human_seurat,
                           vst.flavor = "v2",
                           variable.features.n = 10000,
                           vars.to.regress = c("percent.mt"),
                           return.only.var.genes = FALSE,
                           verbose = FALSE)
 
-seu_sct
+human_seurat_sct
 ```
 
-
+#nCount_RNA after filtering & SCTransform
 ```{r}
-# recompute nCount_RNA from counts matrix
-counts_mat <- GetAssayData(seu_sct, assay = "RNA", layer = "counts")
-seu_sct$nCount_RNA <- Matrix::colSums(counts_mat)
-summary(seu_sct$nCount_RNA)
+# nCount_RNA from counts matrix
+counts_mat <- GetAssayData(human_seurat_sct, assay = "RNA", layer = "counts")
+human_seurat_sct$nCount_RNA <- Matrix::colSums(counts_mat)
+summary(human_seurat_sct$nCount_RNA)
 ```
 
-```{r}
-# recompute nCount_SCT from SCT counts matrix
-sct_mat <- GetAssayData(seu_sct, assay = "SCT", layer = "counts")
-seu_sct$nCount_SCT <- Matrix::colSums(sct_mat)
-summary(mouse_seurat_sct$nCount_SCT)
-
-```
+Median nCount_RNA is on the lower end of typical for 10x Visium data
+  - could be due to an overly aggressive filtering process
 
 
-# Spatial visualization (coordinate scatter plots)
 
-This does **not** require histology images. It just uses whatever coordinate columns exist in `meta.data`.
-
+# Spatial visualization 
 ## Detect coordinate columns
 
 ```{r coords-detect}
-meta_cols <- colnames(seu_sct@meta.data)
+meta_cols <- colnames(human_seurat_sct@meta.data)
 coord_candidates <- list(
   x = c("x","imagecol","col","pxl_col_in_fullres","array_col"),
   y = c("y","imagerow","row","pxl_row_in_fullres","array_row")
@@ -323,13 +345,13 @@ list(xcol = xcol, ycol = ycol)
 
 ```{r spatial-clusters}
 if (!is.null(xcol) && !is.null(ycol)) {
-  df <- data.frame(seu_sct@meta.data, cluster = Idents(seu_sct))
-  ggplot(df, aes(x = .data[[xcol]], y = .data[[ycol]], color = cluster)) +
+  df <- data.frame(human_seurat_sct@meta.data, cluster = Idents(human_seurat_sct))
+  ggplot(df, aes(x = .data[[xcol]], y = .data[[ycol]])) +
     geom_point(size = 0.8) +
     coord_fixed() +
     scale_y_reverse() +
     theme_classic() +
-    labs(title = "Clusters in tissue coordinates", x = xcol, y = ycol)
+    labs(title = "Spots in tissue coordinates", x = xcol, y = ycol)
 } else {
   cat("No recognizable coordinate columns found in meta.data.\\n")
   cat("Available meta.data columns include:\\n")
@@ -337,13 +359,13 @@ if (!is.null(xcol) && !is.null(ycol)) {
 }
 ```
 
-## Plot a marker gene on tissue coordinates
+## look at a specific gene in spatial coords
 
 ```{r spatial-gene}
 if (!is.null(xcol) && !is.null(ycol)) {
   gene <- "MBP"  # change 
-  if (gene %in% rownames(seu_sct)) {
-    df <- data.frame(seu_sct@meta.data, expr = FetchData(seu_sct, vars = gene)[,1])
+  if (gene %in% rownames(human_seurat_sct)) {
+    df <- data.frame(human_seurat_sct@meta.data, expr = FetchData(human_seurat_sct, vars = gene)[,1])
     ggplot(df, aes(x = .data[[xcol]], y = .data[[ycol]], color = expr)) +
       geom_point(size = 0.8) +
       coord_fixed() +
@@ -359,68 +381,86 @@ if (!is.null(xcol) && !is.null(ycol)) {
 # dim reduction
 ```{r seurat-workflow}
 # make SCT the default assay for downstream PCA/UMAP
-DefaultAssay(seu_sct) <- "SCT"
-seu_PCA <- RunPCA(seu_sct, features = VariableFeatures(seu_sct))
+DefaultAssay(human_seurat_sct) <- "SCT"
+human_seurat_PCA <- RunPCA(human_seurat_sct, features = VariableFeatures(human_seurat_sct))
 ```
 
+# check for batches
+```{r}
+table(human_seurat$orig.ident)
+length(unique(human_seurat$orig.ident))
+```
+no batches found
 
 ```{r}
 #plot PCA 
-ElbowPlot(seu_PCA)
+ElbowPlot(human_seurat_PCA)
 
 DimPlot(
-  seu_PCA,
+  human_seurat_PCA,
   reduction = "pca",
   pt.size = 0.6
 ) + ggtitle("PCA of spatial transcriptomics spots")
 ```
 
+Elbow plot: PCs 1-5 explain most variance
+PCA: Decent spread and fanning shape
 
 ```{r}
-#color PCA by genes & counts
-FeaturePlot(seu_PCA, reduction = "pca", features = "nFeature_RNA")
-FeaturePlot(seu_PCA, reduction = "pca", features = "nCount_RNA")
+#color PCA by nFeature_RNA, nCount_RNA, percent.mt
+FeaturePlot(human_seurat_PCA, reduction = "pca", features = c("nFeature_RNA", "nCount_RNA", "percent.mt"))
 ```
 
+Good overlap of nFeature_RNA and nCount_RNA on PCs
+No strong pattern of percent.mt on PCs
+  - indicates PCs are not driven by feature, count, or mitochondrial content
 
 ```{r}
+#colnames(human_seurat_PCA@meta.data)
+
 # color PCA by spatial coordinates
-FeaturePlot(seu_PCA, reduction = "pca", features = "x")
-FeaturePlot(seu_PCA, reduction = "pca", features = "y")
-
+x <- FeaturePlot(human_seurat_PCA, reduction = "pca", features = "imagecol")
+x + ggtitle("x (image column)")
+y <- FeaturePlot(human_seurat_PCA, reduction = "pca", features = "imagerow")
+y + ggtitle("y (image row)")
 ```
-
+No distinct patterns observed in PCA space for spatial coordinates x or y
+  - indicates spatial location is not driving major sources of variation in the data
 
 ```{r}
 # genes contributing to PCs
-VizDimLoadings(seu_PCA, dims = 1:2, reduction = "pca")
+VizDimLoadings(human_seurat_PCA, dims = 1:2, reduction = "pca")
 ```
 
+No obvious highly contributing genes to PCs 1 and 2
 
 ```{r}
 # top genes per PC
-DimHeatmap(seu_PCA, dims = 1:6, cells = 500, balanced = TRUE)
-
+DimHeatmap(human_seurat_PCA, dims = 1:6, cells = 500, balanced = TRUE)
 ```
 
+# clustering and UMAP
 ```{r umap-cluster}
-seu_PCA <- FindNeighbors(seu_PCA, dims = 1:30)
-seu_PCA <- FindClusters(seu_PCA, resolution = params$clustering_resolution)
-seu_UMAP <- RunUMAP(seu_PCA, dims = 1:30)
+human_seurat_PCA <- FindNeighbors(human_seurat_PCA, dims = 1:30)
+human_seurat_PCA <- FindClusters(human_seurat_PCA, resolution = params$clustering_resolution)
+human_seurat_UMAP <- RunUMAP(human_seurat_PCA, dims = 1:30)
 
-DimPlot(seu_UMAP, reduction = "umap", label = TRUE) + NoLegend()
+DimPlot(human_seurat_UMAP, reduction = "umap", label = TRUE) + NoLegend()
 ```
+
+4 identified cell clusters with good to poor separation in UMAP space
+
 
 # Save outputs
 
 ```{r save}
-out_dir <- "outputs_human"
+out_dir <- "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/"
 dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
 
-saveRDS(seu, file.path(out_dir, "human_dlpfc_seurat.rds"))
+seurat_rds <- file.path(out_dir, "humanbrain_seurat.rds")
+saveRDS(human_seurat_sct, seurat_rds)
 
-p_umap <- DimPlot(seu, reduction = "umap", label = TRUE) + NoLegend()
-ggsave(filename = file.path(out_dir, "umap_clusters.png"), plot = p_umap, width = 7, height = 5, dpi = 300)
+cat("Saved Seurat object to: ", seurat_rds, "\\n")
 
 cat("Saved outputs to: ", out_dir, "\\n")
 ```
