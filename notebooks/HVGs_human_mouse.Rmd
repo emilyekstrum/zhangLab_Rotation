@@ -90,9 +90,9 @@ DoHeatmap(mouse_seurat, features = head(mouse_hvg, 50), size = 3) + NoLegend()
 # plot heatmap by clusters - first need to generate clusters
 ```{r}
 DefaultAssay(mouse_seurat) <- "SCT"
-mouse_seurat <- RunPCA(mouse_seurat, verbose = FALSE)
-mouse_seurat <- FindNeighbors(mouse_seurat, dims = 1:30)
-mouse_seurat <- FindClusters(mouse_seurat, resolution = 0.5)
+mouse_seurat <- RunPCA(mouse_seurat, verbose = FALSE) # first dim reduction via PCA
+mouse_seurat <- FindNeighbors(mouse_seurat, dims = 1:30) # construct KNN graph
+mouse_seurat <- FindClusters(mouse_seurat, resolution = 0.5) # cluster cells based on KNN graph (Louvain/Leiden algorithm)
 ```
 
 ```{r}
