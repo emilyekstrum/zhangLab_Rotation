@@ -1,7 +1,7 @@
 ---
 title: "Mouse Brain EDA & Seurat"
 author: "Emily Ekstrum"
-date: ""
+date: "1/8/26"
 output:
   html_document:
     toc: true
@@ -9,6 +9,7 @@ output:
     number_sections: true
     theme: "cosmo"
     df_print: paged
+    
 params:
   rds_path: "/Users/emilyekstrum/Desktop/zhangLab/data/MouseBrain_Data/10x_mousebrain_exp_count_meta.rds"
   assay_name: "RNA"
@@ -24,7 +25,7 @@ params:
   seed: 123
 ---
 
-
+# file setup
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(
   echo = TRUE,
@@ -38,15 +39,15 @@ set.seed(params$seed)
 
 # Mouse Brain EDA & Seurat Analysis
 
-1. Loads in rds datta set
-2. Performs exploratory data analysis (EDA) on the expression matrix and metadata
-3. Creates a **Seurat** object
-4. Runs standard QC, normalization, dimensionality reduction, and clustering
-5. Saves outputs (Seurat object + key plots)
+1. Loads in rds 10x visium mouse brain spatial traonscriptomics data set
+2. Exploratory data analysis (EDA) on the expression matrix and metadata
+3. Creates a seurat object
+4. QC, normalization, dimensionality reduction, and clustering
+5. Saves outputs as RDS file
 
 > **Input**: `r params$rds_path`
 
-# Packages
+# load in packages
 
 ```{r packages}
 pkgs <- c(
@@ -83,11 +84,13 @@ print(names(obj_raw))
 print(head(obj_raw[, 1:min(10, ncol(obj_raw))]))
 print(table(vapply(obj_raw, function(z) class(z)[1], character(1))))
 ```
+
+# Process data into counts matrix and metadata
 ```{r}
-# Columns that are metadata (not genes)
+# specify metadata columns
 meta_cols <- c("cell_id", "x", "y")
 
-# Keep only the meta columns that actually exist
+# keep only the meta columns that actually exist
 meta_cols <- meta_cols[meta_cols %in% colnames(obj_raw)]
 
 meta <- as.data.frame(obj_raw[, meta_cols, drop = FALSE])
@@ -95,16 +98,16 @@ meta <- as.data.frame(obj_raw[, meta_cols, drop = FALSE])
 expr_df <- obj_raw[, setdiff(colnames(obj_raw), meta_cols), drop = FALSE]
 expr_df <- as.data.frame(expr_df)
 
-# Force expression columns to numeric
+# expression columns to numeric
 expr_df[] <- lapply(expr_df, function(col) {
   if (is.factor(col)) col <- as.character(col)
   suppressWarnings(as.numeric(col))
 })
 
-# If any gene columns still fail conversion, stop and print them
+# identify genes that could not be converted to numeric
 bad <- names(expr_df)[vapply(expr_df, function(col) all(is.na(col)), logical(1))]
 if (length(bad) > 0) {
-  stop("These expression columns could not be converted to numeric: ",
+  stop("These gene expression columns could not be converted to numeric: ",
        paste(bad[1:min(30, length(bad))], collapse = ", "),
        if (length(bad) > 30) " ..." else "")
 }
@@ -131,7 +134,13 @@ dim(meta)    # cells x meta data cols
 
 ```
 
-# Create Seurat object
+Gene x cell matrix = 31,053 genes x 2,702 cells
+
+Cell x meta data matrix = 2,702 cells x 3 meta data cols (cell_id, x, y)
+
+
+
+# Create Seurat object for mouse expression data
 
 ```{r create-seurat}
 mouse_seurat <- CreateSeuratObject(
@@ -152,7 +161,7 @@ if (length(mt_features) > 0) {
     "'. percent.mt will not be computed."
   ))
 }
-
+# add image row/col info for spatial information
 mouse_seurat@meta.data$imagerow <- mouse_seurat$y
 mouse_seurat@meta.data$imagecol <- mouse_seurat$x
 
@@ -168,21 +177,42 @@ if ("percent.mt" %in% colnames(mouse_seurat@meta.data)) features_to_plot <- c(fe
 VlnPlot(mouse_seurat, features = features_to_plot, ncol = length(features_to_plot), pt.size = 0.1)
 ```
 
-```{r qc-scatter}
-p_a <- FeatureScatter(mouse_seurat, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
-if ("percent.mt" %in% colnames(mouse_seurat@meta.data)) {
-  p_b <- FeatureScatter(mouse_seurat, feature1 = "nCount_RNA", feature2 = "percent.mt")
-  p_a + p_b
-} else {
-  p_a
-}
+nFeature_RNA: Number of detected genes per spot
+  - Even spread of genes detected per spot
+nCount_RNA: Total UMI (unique molecular identifiers) counts/reads per spot
+percent.mt: Percentage of mitochondrial gene expression per spot (if mitochondrial genes were found)
+  - Most spots have low mitochondrial percentage (< 20%), indicating good data
+
+```{r}
+FeatureScatter(mouse_seurat, "nCount_RNA", "nFeature_RNA")
+FeatureScatter(mouse_seurat, "nCount_RNA", "percent.mt")
+FeatureScatter(mouse_seurat, "nFeature_RNA", "percent.mt")
 ```
+nCount_RNA vs nFeature_RNA: Positive correlation & tight monotonic relationship (r^2 0.93)
+  - spots with higher counts tend to have more detected genes.
+nCount_RNA vs percent.mt: No strong correlation (r^2 -0.04)
+  - spots with high counts do not necessarily have high mitochondrial percentage
+nFeature_RNA vs percent.mt: No strong correlation (r^2 -0.15)
+  - spots with more detected genes do not necessarily have high mitochondrial percentage
+
+
+# Spatial dist of mt percentage
+```{r}
+# plot spatial distribution of mitochondrial percentage
+ggplot(mouse_seurat@meta.data, aes(x = imagecol, y = imagerow, color = percent.mt)) +
+  geom_point(size = 0.6) +
+  coord_fixed() +
+  scale_y_reverse() +
+  theme_classic()
+```
+
+No strong spatial pattern of mitochondrial percentage across the tissue section, indicating no localized regions of high mitochondrial content
 
 # Filtering 
 
 ```{r filtering}
+# print filtering params used
 if (isTRUE(params$filter)) {
-  message("Filtering enabled with thresholds:")
   print(list(
     nFeature_low = params$nFeature_low,
     nFeature_high = params$nFeature_high,
@@ -190,6 +220,7 @@ if (isTRUE(params$filter)) {
     percent_mt_high = params$percent_mt_high
   ))
 
+# filter spots based on QC metrics
 expr <- mouse_seurat@meta.data$nFeature_RNA >= params$nFeature_low &
         mouse_seurat@meta.data$nFeature_RNA <= params$nFeature_high &
         mouse_seurat@meta.data$nCount_RNA <= params$nCount_high &
@@ -213,7 +244,7 @@ if (any(bad)) {
 }
 
 
-# Remove spots with zero total counts (can cause log_umi issues)
+# Remove spots with zero total counts 
 zero_count_spots <- which(mouse_seurat$nCount_RNA == 0)
 if (length(zero_count_spots) > 0) {
   warning(paste("Removing", length(zero_count_spots), "spots with zero total counts"))
@@ -221,10 +252,10 @@ if (length(zero_count_spots) > 0) {
   mouse_seurat <- subset(mouse_seurat, cells = cells_to_keep)
 }
 
-# Optional: Filter out low quality spots (uncomment if needed)
-# seurat_obj <- subset(seurat_obj, subset = nFeature_RNA > 200 & nFeature_RNA < 8000 & percent.mt < 20)
+# Filter out low quality spots
+# mouse_seurat <- subset(mouse_seurat, subset = nFeature_RNA > 200 & nFeature_RNA < 8000 & percent.mt < 20)
 
-# Print summary statistics to verify data quality
+# summary stats for filtering
 cat("Data quality summary:\n")
 cat("Number of spots:", ncol(mouse_seurat), "\n")
 cat("Number of genes:", nrow(mouse_seurat), "\n")
@@ -243,41 +274,37 @@ mouse_seurat_sct <- SCTransform(mouse_seurat,
 mouse_seurat_sct
 ```
 
+# nCount_RNA after filtering & SCTransform
 
 ```{r}
-# recompute nCount_RNA from counts matrix
+#  nCount_RNA from counts matrix
 counts_mat <- GetAssayData(mouse_seurat_sct, assay = "RNA", layer = "counts")
 mouse_seurat_sct$nCount_RNA <- Matrix::colSums(counts_mat)
 summary(mouse_seurat_sct$nCount_RNA)
 ```
 
-```{r}
-# recompute nCount_SCT from SCT counts matrix
-sct_mat <- GetAssayData(mouse_seurat_sct, assay = "SCT", layer = "counts")
-mouse_seurat_sct$nCount_SCT <- Matrix::colSums(sct_mat)
-summary(mouse_seurat_sct$nCount_SCT)
-
-```
-
-
+Median nCount_RNA spread falls within typical ranges.
 
 # Visualize on x y coords
 ```{r}
 #head(mouse_seurat@meta.data[, c("x","y")])
 df <- data.frame(mouse_seurat_sct@meta.data, cluster = Idents(mouse_seurat_sct))
-ggplot(df, aes(x = x, y = y, color = cluster)) +
+ggplot(df, aes(x = x, y = y)) +
   geom_point(size = 0.8) +
   coord_fixed() +
   scale_y_reverse() +        
   theme_classic() +
-  labs(title = "Clusters in tissue coordinates", x = "x", y = "y")
+  labs(title = "Spots on tissue coordinates", x = "x", y = "y")
 
 ```
 
 
 # look at a specific gene in the tissue coordinates
 ```{r}
-gene <- "Gm1992"  # change
+ # list genes
+rownames(mouse_seurat_sct)
+
+gene <- "Atf3"  # can change
 df$expr <- FetchData(mouse_seurat_sct, vars = gene)[,1]
 
 ggplot(df, aes(x = x, y = y, color = expr)) +
@@ -300,7 +327,7 @@ mouse_seurat_PCA <- RunPCA(mouse_seurat_sct, features = VariableFeatures(mouse_s
 
 
 ```{r}
-#plot PCA 
+#plot elbow plot & PCA 
 ElbowPlot(mouse_seurat_PCA)
 
 DimPlot(
@@ -310,31 +337,49 @@ DimPlot(
 ) + ggtitle("PCA of spatial transcriptomics spots")
 ```
 
+Elbow plot: PCs 1-10 capture sufficient variance
+PCA: Good fanning/crescent shape
+  - indicates good separation of spots in PC space
+
+# check for batches
 ```{r}
-#color PCA by genes & counts
-FeaturePlot(mouse_seurat_PCA, reduction = "pca", features = "nFeature_RNA")
-FeaturePlot(mouse_seurat_PCA, reduction = "pca", features = "nCount_RNA")
+#table(mouse_seurat$orig.ident)
+#length(unique(mouse_seurat$orig.ident))
+head(colnames(mouse_seurat))
+length(unique(mouse_seurat$cell_id))
 ```
+No batches found
+
+```{r}
+#color PCA by nFeature_RNA, nCount_RNA, percent.mt
+FeaturePlot(mouse_seurat_PCA, reduction = "pca", features = c("nFeature_RNA", "nCount_RNA", "percent.mt"))
+```
+
+No distinct patterns observed in PCA space for nFeature_RNA, nCount_RNA, or percent.mt
+  - indicates these QC metrics are not driving major sources of variation in the data
+
 
 ```{r}
 # color PCA by spatial coordinates
-FeaturePlot(mouse_seurat_PCA, reduction = "pca", features = "x")
-FeaturePlot(mouse_seurat_PCA, reduction = "pca", features = "y")
-
+FeaturePlot(mouse_seurat_PCA, reduction = "pca", features = c("x", "y"))
 ```
+
+No distinct patterns observed in PCA space for spatial coordinates x or y
+  - indicates spatial location is not driving major sources of variation in the data
 
 ```{r}
 # genes contributing to PCs
 VizDimLoadings(mouse_seurat_PCA, dims = 1:2, reduction = "pca")
 ```
 
+No obvious highly contributing genes driving PCs 1 or 2
+
 ```{r}
 # top genes per PC
 DimHeatmap(mouse_seurat_PCA, dims = 1:6, cells = 500, balanced = TRUE)
-
 ```
 
-
+# Clustering & UMAP
 ```{r umap-cluster}
 mouse_seurat_PCA <- FindNeighbors(mouse_seurat_PCA, dims = 1:30)
 mouse_seurat_PCA <- FindClusters(mouse_seurat_PCA, resolution = params$clustering_resolution)
@@ -344,16 +389,35 @@ DimPlot(mouse_seurat_UMAP, reduction = "umap", label = TRUE) + NoLegend()
 ```
 
 
+7 identified cell clusters with decent separation in UMAP space
 
+# Clusters on spatial tissue coordinates
+```{r}
+# plot clusters on spatial tissue coordinates
+df <- data.frame(mouse_seurat_UMAP@meta.data, cluster = Idents(mouse_seurat_UMAP))
+
+ggplot(df, aes(x = imagecol, y = imagerow, color = cluster)) +
+  geom_point(size = 0.6) +
+  coord_fixed() +
+  scale_y_reverse() +
+  theme_classic() +
+  labs(
+    title = "UMAP clusters projected onto mouse tissue coordinates",
+    x = "image column",
+    y = "image row"
+  )
+```
+
+UMAP clusters have relatively distinct spatial localization patterns on the tissue coordinates.
 
 # Save outputs
 
 ```{r save, results='asis'}
-out_dir <- "outputs"
+out_dir <- "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/"
 dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
 
 seurat_rds <- file.path(out_dir, "mousebrain_seurat.rds")
-saveRDS(seu, seurat_rds)
+saveRDS(mouse_seurat_sct, seurat_rds)
 
 cat("Saved Seurat object to: ", seurat_rds, "\\n")
 ```
