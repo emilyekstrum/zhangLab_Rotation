@@ -1,0 +1,193 @@
+---
+title: "nnSVG_workaround"
+author: "Emily Ekstrum"
+date: "`r Sys.Date()`"
+output: html_document
+
+params:
+  mouse_rds_path: "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/mousebrain_seurat.rds"
+  human_rds_path: "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/humanbrain_seurat.rds"
+  seed: 123
+
+---
+
+
+```{r}
+## Must be set before loading Matrix / nnSVG / BRISC / Seurat
+Sys.setenv(
+  OMP_NUM_THREADS = "1",
+  OPENBLAS_NUM_THREADS = "1",
+  MKL_NUM_THREADS = "1",
+  VECLIB_MAXIMUM_THREADS = "1",
+  NUMEXPR_NUM_THREADS = "1"
+)
+
+# Optional but often helps (limits BLAS threads if you have RhpcBLASctl)
+if (requireNamespace("RhpcBLASctl", quietly = TRUE)) {
+  RhpcBLASctl::blas_set_num_threads(1)
+  RhpcBLASctl::omp_set_num_threads(1)
+}
+
+```
+
+```{r}
+library(BiocParallel)
+library(nnSVG)
+
+bp <- SnowParam(workers = 3, type = "SOCK")  # safe parallel on macOS
+# OR, if you just want maximum stability:
+# bp <- SerialParam()
+```
+
+```{r}
+obj <- readRDS(params$mouse_rds_path)
+```
+
+```{r}
+library(Seurat)
+library(Matrix)
+library(BRISC)
+
+# extract expression as a real sparse matrix
+X <- LayerData(obj, assay = "RNA", layer = "counts")
+
+#  force dgCMatrix 
+X <- as(X, "dgCMatrix")
+
+# coords with rownames = cell barcodes
+coords <- obj@meta.data[, c("imagecol", "imagerow"), drop = FALSE]
+stopifnot(!is.null(rownames(coords)))
+coords <- as.matrix(coords)
+storage.mode(coords) <- "double"
+
+# align cells
+common <- intersect(colnames(X), rownames(coords))
+stopifnot(length(common) > 0)
+X <- X[, common, drop = FALSE]
+coords <- coords[common, , drop = FALSE]
+
+# keep genes that are expressed in at least 10 spots
+keep <- Matrix::rowSums(X > 0) >= 10  # can edit to make more strict
+X <- X[keep, , drop = FALSE]
+
+# cap to 3000 most variable genes using sparse variance proxy
+gene_vars <- Matrix::rowMeans(X^2) - (Matrix::rowMeans(X))^2
+top <- names(sort(gene_vars, decreasing = TRUE))[1:min(3000, length(gene_vars))]
+X <- X[top, , drop = FALSE]
+
+#class(X)
+#is(X, "dgCMatrix")
+
+```
+
+```{r}
+# run
+svgs <- nnSVG(input = X, spatial_coords = coords, BPPARAM = bp)
+```
+
+```{r}
+library(tidyverse)
+
+svgs <- as.data.frame(svgs)
+
+# Subset the genes where padj < 0.05
+auto_genes_list <- svgs %>%
+  filter(padj < 0.1) %>%
+  rownames()
+
+head(auto_genes_list)
+head(svgs)
+```
+
+```{r}
+res <- as.data.frame(svgs)
+res$gene <- rownames(res)
+
+# keep finite padj
+res <- res[is.finite(res$padj) & !is.na(res$padj), ]
+res$neglog10_padj <- -log10(pmax(res$padj, 1e-300))
+
+head(res[, c("gene","LR_stat","pval","padj","rank")])
+
+```
+
+```{r}
+ggplot(res, aes(x = rank, y = neglog10_padj)) +
+  geom_point(size = 1, alpha = 0.7) +
+  geom_hline(yintercept = -log10(0.05), linetype = 2) +
+  labs(
+    title = "nnSVG results",
+    x = "Rank (1 = most significant)",
+    y = "-log10(adjusted p-value)"
+  ) +
+  theme_classic()
+
+```
+
+```{r}
+ggplot(res, aes(x = LR_stat, y = neglog10_padj)) +
+  geom_point(size = 1, alpha = 0.7) +
+  geom_hline(yintercept = -log10(0.05), linetype = 2) +
+  labs(
+    title = "nnSVG results",
+    x = "LR_stat",
+    y = "-log10(adjusted p-value)"
+  ) +
+  theme_classic()
+
+```
+
+```{r}
+ggplot(res, aes(x = padj)) +
+  geom_histogram(bins = 50) +
+  labs(title = "Adjusted p-value distribution", x = "padj", y = "Count") +
+  theme_classic()
+
+```
+
+```{r}
+library(Seurat)
+library(Matrix)
+library(patchwork)
+
+# pick top genes by padj
+top_n <- 6
+top_genes <- head(res$gene[order(res$padj)], top_n)
+
+# expression matrix: use data if available, otherwise counts
+X <- GetAssayData(obj, assay = "RNA", layer = "data")
+if (is.null(X) || nrow(X) == 0 || ncol(X) == 0) {
+  X <- GetAssayData(obj, assay = "RNA", layer = "counts")
+}
+
+# coords with barcodes as rownames
+coords <- obj@meta.data[, c("imagecol","imagerow"), drop = FALSE]
+coords$cell <- rownames(coords)
+
+# helper to plot one gene
+plot_svg_gene <- function(g) {
+  if (!g %in% rownames(X)) stop(paste("Gene not found in matrix:", g))
+  df <- coords
+  df$expr <- as.numeric(X[g, df$cell])
+
+  ggplot(df, aes(x = imagecol, y = imagerow, color = expr)) +
+    geom_point(size = 1) +
+    scale_y_reverse() +     # common for image coordinates; remove if upside-down
+    coord_equal() +
+    labs(title = g, color = "Expr") +
+    theme_classic()
+}
+
+plots <- lapply(top_genes, plot_svg_gene)
+wrap_plots(plots, ncol = 3)
+
+```
+
+```{r}
+ggplot(res, aes(x = prop_sv, y = neglog10_padj)) +
+  geom_point(size = 1, alpha = 0.7) +
+  labs(title = "prop_sv vs significance", x = "prop_sv", y = "-log10(padj)") +
+  theme_classic()
+
+```
+
