@@ -13,6 +13,7 @@ params:
 
 
 ```{r}
+# set up to limit threads for BLAS/LAPACK operations
 ## Must be set before loading Matrix / nnSVG / BRISC / Seurat
 Sys.setenv(
   OMP_NUM_THREADS = "1",
@@ -22,7 +23,7 @@ Sys.setenv(
   NUMEXPR_NUM_THREADS = "1"
 )
 
-# Optional but often helps (limits BLAS threads if you have RhpcBLASctl)
+#  helps (limits BLAS threads if you have RhpcBLASctl)
 if (requireNamespace("RhpcBLASctl", quietly = TRUE)) {
   RhpcBLASctl::blas_set_num_threads(1)
   RhpcBLASctl::omp_set_num_threads(1)
@@ -40,7 +41,7 @@ bp <- SnowParam(workers = 3, type = "SOCK")  # safe parallel on macOS
 ```
 
 ```{r}
-obj <- readRDS(params$mouse_rds_path)
+mouse_seurat <- readRDS(params$mouse_rds_path)
 ```
 
 ```{r}
@@ -49,57 +50,60 @@ library(Matrix)
 library(BRISC)
 
 # extract expression as a real sparse matrix
-X <- LayerData(obj, assay = "RNA", layer = "counts")
+exp_mat <- LayerData(mosue_seurat, assay = "RNA", layer = "counts")
 
-#  force dgCMatrix 
-X <- as(X, "dgCMatrix")
+# force dgCMatrix 
+exp_mat <- as(exp_mat, "dgCMatrix")
 
 # coords with rownames = cell barcodes
-coords <- obj@meta.data[, c("imagecol", "imagerow"), drop = FALSE]
+coords <- mousemouse_seurat@meta.data[, c("imagecol", "imagerow"), drop = FALSE]
 stopifnot(!is.null(rownames(coords)))
 coords <- as.matrix(coords)
 storage.mode(coords) <- "double"
 
 # align cells
-common <- intersect(colnames(X), rownames(coords))
+common <- intersect(colnames(exp_mat), rownames(coords))
 stopifnot(length(common) > 0)
-X <- X[, common, drop = FALSE]
+exp_mat <- exp_mat[, common, drop = FALSE]
 coords <- coords[common, , drop = FALSE]
 
 # keep genes that are expressed in at least 10 spots
-keep <- Matrix::rowSums(X > 0) >= 10  # can edit to make more strict
-X <- X[keep, , drop = FALSE]
+keep <- Matrix::rowSums(exp_mat > 0) >= 10  # can edit to make more strict
+exp_mat <- exp_mat[keep, , drop = FALSE]
 
 # cap to 3000 most variable genes using sparse variance proxy
-gene_vars <- Matrix::rowMeans(X^2) - (Matrix::rowMeans(X))^2
+gene_vars <- Matrix::rowMeans(exp_mat^2) - (Matrix::rowMeans(exp_mat))^2
 top <- names(sort(gene_vars, decreasing = TRUE))[1:min(3000, length(gene_vars))]
-X <- X[top, , drop = FALSE]
+exp_mat <- exp_mat[top, , drop = FALSE]
 
-#class(X)
-#is(X, "dgCMatrix")
+# check you have dgCMatrix
+#class(exp_mat)
+#is(exp_mat, "dgCMatrix")
 
 ```
 
 ```{r}
-# run
-svgs <- nnSVG(input = X, spatial_coords = coords, BPPARAM = bp)
+# run nnSVG to find spatially variable genes
+svgs <- nnSVG(input = exp_mat, spatial_coords = coords, BPPARAM = bp)
 ```
 
 ```{r}
 library(tidyverse)
 
+# create svg dataframe
 svgs <- as.data.frame(svgs)
 
-# Subset the genes where padj < 0.05
+# subset the genes where padj < 0.05
 auto_genes_list <- svgs %>%
   filter(padj < 0.1) %>%
   rownames()
 
 head(auto_genes_list)
-head(svgs)
+head(svgs) # LR stat is log likelihood ratio
 ```
 
 ```{r}
+# create results data frame
 res <- as.data.frame(svgs)
 res$gene <- rownames(res)
 
@@ -107,11 +111,13 @@ res$gene <- rownames(res)
 res <- res[is.finite(res$padj) & !is.na(res$padj), ]
 res$neglog10_padj <- -log10(pmax(res$padj, 1e-300))
 
+# look at top results
 head(res[, c("gene","LR_stat","pval","padj","rank")])
 
 ```
 
 ```{r}
+# volcano plot: rank vs -log10(padj)
 ggplot(res, aes(x = rank, y = neglog10_padj)) +
   geom_point(size = 1, alpha = 0.7) +
   geom_hline(yintercept = -log10(0.05), linetype = 2) +
@@ -125,6 +131,7 @@ ggplot(res, aes(x = rank, y = neglog10_padj)) +
 ```
 
 ```{r}
+# volcano plot: log likelihood vs -log10(padj)
 ggplot(res, aes(x = LR_stat, y = neglog10_padj)) +
   geom_point(size = 1, alpha = 0.7) +
   geom_hline(yintercept = -log10(0.05), linetype = 2) +
@@ -138,6 +145,7 @@ ggplot(res, aes(x = LR_stat, y = neglog10_padj)) +
 ```
 
 ```{r}
+# p value dist
 ggplot(res, aes(x = padj)) +
   geom_histogram(bins = 50) +
   labs(title = "Adjusted p-value distribution", x = "padj", y = "Count") +
@@ -151,7 +159,7 @@ library(Matrix)
 library(patchwork)
 
 # pick top genes by padj
-top_n <- 6
+top_n <- 9
 top_genes <- head(res$gene[order(res$padj)], top_n)
 
 # expression matrix: use data if available, otherwise counts
@@ -184,6 +192,7 @@ wrap_plots(plots, ncol = 3)
 ```
 
 ```{r}
+# scatter plot: prop_sv vs -log10(padj)
 ggplot(res, aes(x = prop_sv, y = neglog10_padj)) +
   geom_point(size = 1, alpha = 0.7) +
   labs(title = "prop_sv vs significance", x = "prop_sv", y = "-log10(padj)") +
