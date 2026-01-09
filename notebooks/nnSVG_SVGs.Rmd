@@ -111,6 +111,17 @@ head(mouse_svgs) # LR stat is log likelihood ratio
 mouse_res <- as.data.frame(mouse_svgs)
 mouse_res$gene <- rownames(mouse_res)
 
+# print rows of mouse_res
+length(rownames(mouse_res))
+
+# remove MT genes with grep
+mouse_res <- mouse_res[!grepl("^MT-|^mt-", mouse_res$gene), ]
+length(rownames(mouse_res))
+
+# remove blood genes
+mouse_res <- mouse_res[!mouse_res$gene %in% c("Hba-a1", "Hba-a2", "Hbb-bs", "Hbb-bt"), ]
+length(rownames(mouse_res))
+
 # keep finite padj
 mouse_res <- mouse_res[is.finite(mouse_res$padj) & !is.na(mouse_res$padj), ]
 mouse_res$neglog10_padj <- -log10(pmax(mouse_res$padj, 1e-300))
@@ -278,9 +289,20 @@ head(human_svgs) # LR stat is log likelihood ratio
 human_res <- as.data.frame(human_svgs)
 human_res$gene <- rownames(human_res)
 
+# remove MT genes with grep
+human_res <- human_res[!grepl("^MT-|^mt-", human_res$gene), ]
+length(rownames(human_res))
+
+# remove blood genes
+human_res <- human_res[!human_res$gene %in% c("Hba-a1", "Hba-a2", "Hbb-bs", "Hbb-bt"), ]
+length(rownames(human_res))
+
 # keep finite padj
 human_res <- human_res[is.finite(human_res$padj) & !is.na(human_res$padj), ]
 human_res$neglog10_padj <- -log10(pmax(human_res$padj, 1e-300))
+
+# print rows of human_res
+length(rownames(human_res))
 
 # look at top results
 # TODO: filter out MT genes?
@@ -342,7 +364,7 @@ human_top_genes <- head(human_res$gene[order(human_res$padj)], human_top_n)
 human_top_genes <- human_res %>%
   filter(!grepl("^MT-", gene)) %>%
   arrange(padj) %>%
-  slice_head(n = top_n) %>%
+  slice_head(n = human_top_n) %>%
   pull(gene)
 
 # coords with barcodes as rownames
@@ -351,9 +373,9 @@ human_coords$cell <- rownames(human_coords)
 
 # helper to plot one gene
 plot_svg_gene <- function(g) {
-  if (!g %in% rownames(exp_mat)) stop(paste("Gene not found in matrix:", g))
-  df <- coords
-  df$expr <- as.numeric(exp_mat[g, df$cell])
+  if (!g %in% rownames(human_exp_mat)) stop(paste("Gene not found in matrix:", g))
+  df <- human_coords
+  df$expr <- as.numeric(human_exp_mat[g, df$cell])
 
   ggplot(df, aes(x = imagecol, y = imagerow, color = expr)) +
     geom_point(size = 0.8) +
