@@ -1,0 +1,59 @@
+---
+title: "SVG_vs_HVG.Rmd"
+author: "Emily Ekstrum"
+date: '`r Sys.Date()`'
+output: html_document
+
+params:
+  mouse_seurat_SVG_path: "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/seurat_mouse_svg_table.rds"
+  mouse_nnSVG_SVG_path: "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/nnSVG_mouse_results.rds"
+  
+  human_seurat_SVG_path: "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/seurat_human_svg_table.rds"
+  human_nnSVG_SVG_path: "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/nnSVG_human_results.rds"
+  
+  mouse_HVG_path: "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/seurat_mouse_hvg_table.rds"
+  human_HVG_path: "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/seurat_human_hvg_table.rds"
+  
+  seed: 123
+---
+
+# file setup
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,
+  fig.width = 8,
+  fig.height = 5
+)
+set.seed(params$seed)
+```
+
+
+# Comapre HVGs and SVGs
+
+# load in packages
+
+```{r packages}
+pkgs <- c(
+  "Seurat",
+  "Matrix",
+  "ggplot2",
+  "dplyr",
+  "tibble",
+  "patchwork",
+  "Rfast2",
+  "STew",
+  "BiocManager"
+)
+
+to_install <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
+if (length(to_install) > 0) {
+  install.packages(to_install, repos = "https://cloud.r-project.org")
+}
+
+# Load
+lapply(pkgs, library, character.only = TRUE)
+```
+
+# load in mouse data
