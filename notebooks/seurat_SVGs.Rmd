@@ -62,59 +62,79 @@ mouse_seurat <- readRDS(params$mouse_rds_path)
 mouse_seurat
 ```
 
-# identify SVGs using Seurat
-```{r find-mouse-svgs}
-# coords (cells x 2)
-spatial_loc <- as.matrix(mouse_seurat@meta.data[colnames(mouse_seurat), c("imagecol","imagerow"), drop=FALSE])
+```{r}
+# get coords (cells x 2)
+spatial_loc <- as.matrix(
+  mouse_seurat@meta.data[colnames(mouse_seurat), c("imagecol","imagerow"), drop = FALSE]
+)
 storage.mode(spatial_loc) <- "numeric"
 colnames(spatial_loc) <- c("x","y")
+stopifnot(is.matrix(spatial_loc), ncol(spatial_loc) == 2, nrow(spatial_loc) == ncol(mouse_seurat))
 
-# SCT expression (genes x cells - pearson residuals)
+# SCT (genes x cells)
 DefaultAssay(mouse_seurat) <- "SCT"
+
+# SCT Pearson residuals
 expr_sct <- GetAssayData(mouse_seurat, assay = "SCT", layer = "scale.data")
 
-# can only use HVGs to speed up
-#hvg <- as.character(VariableFeatures(mouse_seurat))
-#expr_sct <- expr_sct[hvg, , drop = FALSE]
+#  only HVGs to speed up computation
+hvg <- as.character(VariableFeatures(mouse_seurat))
+expr_sct <- expr_sct[hvg, , drop = FALSE]
 
-# run Moran's I SVG
+# Moran's I SVG (run on matrix - returns a data.frame object)
 svg_df <- FindSpatiallyVariableFeatures(
   object = expr_sct,
   spatial.location = spatial_loc,
   selection.method = "moransi"
 )
 
-# svg_df is the data.frame returned by FindSpatiallyVariableFeatures()
-# inspect output
-names(svg_df)
-str(svg_df)
+# force data.frame for consistent handling
+svg_df <- as.data.frame(svg_df)
 
-# get score columne
+# cehck gene names exist
+if (is.null(rownames(svg_df))) {
+  stop("svg_df has no rownames (gene IDs). If there's a gene column, set rownames(svg_df) <- svg_df$gene")
+}
+
+# output inspection
+names(svg_df)
+# str(svg_df)
+
+# pick Moran's I column 
 score_col <- intersect(
   c("moransi", "MoranI", "moran.i", "I", "observed", "statistic"),
   names(svg_df)
 )[1]
 
 if (is.na(score_col)) {
-  stop("Couldn't find a Moran's I score column. Check names(svg_df).")
+  stop(paste("Couldn't find a Moran's I score column. Available columns:",
+             paste(names(svg_df), collapse = ", ")))
 }
 
-# score -> numeric vector (handles list/df columns)
+# score -> numeric vector (handles odd column types) 
 score <- svg_df[[score_col]]
 if (is.data.frame(score)) score <- score[[1]]
 score <- as.numeric(score)
 
-# order genes by score (high to low)
+# rank genes by spatial autocorrelation (high to low)
 svg_genes <- rownames(svg_df)[order(score, decreasing = TRUE)]
 head(svg_genes, 20)
 
-# store
+# tore inside the Seurat object 
 mouse_seurat@misc$svg_sct_moransi_table <- svg_df
 mouse_seurat@misc$svg_sct_moransi_genes <- svg_genes
+
 ```
 
 ```{r}
-length(nrows(mouse_seurat@misc$svg_sct_moransi_table)))
+# save mouse SVG table
+svg_df <- as.data.frame(svg_df)
+svg_df$gene <- rownames(svg_df)
+saveRDS(svg_df, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/seurat_mouse_svg_table.rds")
+```
+
+```{r}
+length(nrows(mouse_seurat@misc$svg_sct_moransi_table))
 ```
 
 # store SVGs in a cell by location matrix
@@ -140,54 +160,75 @@ human_seurat
 
 
 # identify SVGs using Seurat
-```{r find-human-svgs}
-# coords (cells x 2)
-spatial_loc <- as.matrix(human_seurat@meta.data[colnames(human_seurat), c("imagecol","imagerow"), drop=FALSE])
+```{r}
+# get coords (cells x 2)
+spatial_loc <- as.matrix(
+  human_seurat@meta.data[colnames(human_seurat), c("imagecol","imagerow"), drop = FALSE]
+)
 storage.mode(spatial_loc) <- "numeric"
 colnames(spatial_loc) <- c("x","y")
+stopifnot(is.matrix(spatial_loc), ncol(spatial_loc) == 2, nrow(spatial_loc) == ncol(human_seurat))
 
-# SCT expression (genes x cells - pearson residuals)
+# SCT (genes x cells)
 DefaultAssay(human_seurat) <- "SCT"
+
+# SCT Pearson residuals
 expr_sct <- GetAssayData(human_seurat, assay = "SCT", layer = "scale.data")
 
-# again - only restrict to HVGs
-#hvg <- as.character(VariableFeatures(human_seurat))
-#expr_sct <- expr_sct[hvg, , drop = FALSE]
+#  only HVGs to speed up computation
+hvg <- as.character(VariableFeatures(human_seurat))
+expr_sct <- expr_sct[hvg, , drop = FALSE]
 
-# run Moran's I SVG
+# Moran's I SVG (run on matrix - returns a data.frame object)
 svg_df <- FindSpatiallyVariableFeatures(
   object = expr_sct,
   spatial.location = spatial_loc,
   selection.method = "moransi"
 )
 
-# svg_df is the data.frame returned by FindSpatiallyVariableFeatures(...)
-# inspect output
-names(svg_df)
-str(svg_df)
+# force data.frame for consistent handling
+svg_df <- as.data.frame(svg_df)
 
-# get score column
+# cehck gene names exist
+if (is.null(rownames(svg_df))) {
+  stop("svg_df has no rownames (gene IDs). If there's a gene column, set rownames(svg_df) <- svg_df$gene")
+}
+
+# output inspection
+names(svg_df)
+# str(svg_df)
+
+# pick Moran's I column 
 score_col <- intersect(
   c("moransi", "MoranI", "moran.i", "I", "observed", "statistic"),
   names(svg_df)
 )[1]
 
 if (is.na(score_col)) {
-  stop("Couldn't find a Moran's I score column. Check names(svg_df).")
+  stop(paste("Couldn't find a Moran's I score column. Available columns:",
+             paste(names(svg_df), collapse = ", ")))
 }
 
-# score -> numeric vector (handles list/df columns)
+# score -> numeric vector (handles odd column types) 
 score <- svg_df[[score_col]]
 if (is.data.frame(score)) score <- score[[1]]
 score <- as.numeric(score)
 
-#order genes by score (high to low)
+# rank genes by spatial autocorrelation (high to low)
 svg_genes <- rownames(svg_df)[order(score, decreasing = TRUE)]
 head(svg_genes, 20)
 
-# store
+# store inside the Seurat object 
 human_seurat@misc$svg_sct_moransi_table <- svg_df
 human_seurat@misc$svg_sct_moransi_genes <- svg_genes
+
+```
+
+```{r}
+# save human SVG table
+svg_df <- as.data.frame(svg_df)
+svg_df$gene <- rownames(svg_df)
+saveRDS(svg_df, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/seurat_human_svg_table.rds")
 ```
 
 # store SVGs in a cell by location matrix
