@@ -120,7 +120,7 @@ score <- as.numeric(score)
 svg_genes <- rownames(svg_df)[order(score, decreasing = TRUE)]
 head(svg_genes, 20)
 
-# tore inside the Seurat object 
+# store inside the Seurat object 
 mouse_seurat@misc$svg_sct_moransi_table <- svg_df
 mouse_seurat@misc$svg_sct_moransi_genes <- svg_genes
 
@@ -148,6 +148,92 @@ head(rownames(mouse_svg_matrix), 20)
 saveRDS(mouse_svg_matrix, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/seurat_mouse_svg_matrix.rds")
 ```
 
+# eda of top SVGs
+```{r mouse-svg-eda}
+svg_df <- as.data.frame(svg_df)
+svg_df$gene <- rownames(svg_df)
+
+# numeric vectors
+svg_df$observed <- as.numeric(svg_df$observed)
+svg_df$p.value  <- as.numeric(svg_df$p.value)
+
+# score = -log10(p)
+svg_df$neglog10_p <- -log10(pmax(svg_df$p.value, .Machine$double.xmin))
+
+# top SVG genes (rank by p-value, tie-break by observed)
+svg_df <- svg_df[order(svg_df$p.value, -svg_df$observed), , drop = FALSE]
+to_label <- head(svg_df$gene, 20)
+
+p <- ggplot(svg_df, aes(x = observed, y = neglog10_p)) +
+  geom_point(alpha = 0.6, size = 1) +
+  theme_classic() +
+  labs(
+    title = "Mouse SCT SVGs (Moran’s I)",
+    x = "Moran’s I (observed)",
+    y = "-log10(p-value)"
+  )
+
+LabelPoints(plot = p, points = to_label, repel = TRUE)
+```
+
+```{r}
+DefaultAssay(mouse_seurat) <- "SCT"
+
+# normal HVG plot
+p_hvg <- VariableFeaturePlot(mouse_seurat, assay = "SCT")
+
+# SVG genes from svg_df:
+svg_genes <- rownames(svg_df)[order(svg_df$p.value, -svg_df$observed)]
+
+# label genes that are in the HVG plot data
+to_label <- intersect(svg_genes, rownames(p_hvg$data))[1:20]
+
+LabelPoints(plot = p_hvg, points = to_label, repel = TRUE)
+```
+
+# heatmap of top 50 SVGs
+```{r mouse-svg-heatmap}
+DefaultAssay(mouse_seurat) <- "SCT"
+
+svg_ranked <- svg_df[order(svg_df$p.value, -svg_df$observed), , drop = FALSE]
+svg_top50  <- rownames(svg_ranked)[1:50]
+
+DoHeatmap(
+  mouse_seurat,
+  features = svg_top50,
+  size = 3
+) + NoLegend()
+
+```
+
+# plot heatmap by clusters - first need to generate clusters
+```{r}
+DefaultAssay(mouse_seurat) <- "SCT"
+
+mouse_seurat <- Seurat::RunPCA(mouse_seurat, verbose = FALSE)
+mouse_seurat <- Seurat::FindNeighbors(mouse_seurat, reduction = "pca", dims = 1:30, verbose = FALSE)
+
+# check graph exists right before clustering
+names(mouse_seurat@graphs)
+
+mouse_seurat <- Seurat::FindClusters(mouse_seurat, graph.name = "SCT_snn", resolution = 0.5, verbose = FALSE)
+```
+
+```{r}
+# view cluster identities
+table(Idents(mouse_seurat))
+colnames(mouse_seurat@meta.data)
+```
+
+# Heatmap of top 50 SVGs by clusters
+```{r}
+DoHeatmap(
+  mouse_seurat,
+  features = svg_top50,
+  group.by = "seurat_clusters",
+  size = 3
+) + NoLegend()
+```
 
 #------------- human data ----------------#
 
@@ -241,5 +327,96 @@ head(rownames(human_svg_matrix), 20)
 # save mouse SVG matrix
 ```{r save-human-svg-matrix}
 saveRDS(human_svg_matrix, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/seurat_human_svg_matrix.rds")
+```
+
+# eda of top SVGs
+```{r human-svg-eda}
+svg_df <- as.data.frame(svg_df)
+svg_df$gene <- rownames(svg_df)
+
+#  numeric vectors
+svg_df$observed <- as.numeric(svg_df$observed)
+svg_df$p.value  <- as.numeric(svg_df$p.value)
+
+# score = -log10(p)
+svg_df$neglog10_p <- -log10(pmax(svg_df$p.value, .Machine$double.xmin))
+
+# choose top SVG genes (rank by p-value, tie-break by observed)
+svg_df <- svg_df[order(svg_df$p.value, -svg_df$observed), , drop = FALSE]
+to_label <- head(svg_df$gene, 20)
+
+p <- ggplot(svg_df, aes(x = observed, y = neglog10_p)) +
+  geom_point(alpha = 0.6, size = 1) +
+  theme_classic() +
+  labs(
+    title = "Human SCT SVGs (Moran’s I)",
+    x = "Moran’s I (observed)",
+    y = "-log10(p-value)"
+  )
+
+LabelPoints(plot = p, points = to_label, repel = TRUE)
+```
+
+```{r}
+DefaultAssay(human_seurat) <- "SCT"
+
+# normal HVG plot
+p_hvg <- VariableFeaturePlot(human_seurat, assay = "SCT")
+
+# SVG genes from svg_df:
+svg_genes <- rownames(svg_df)[order(svg_df$p.value, -svg_df$observed)]
+
+# only label genes that are in the HVG plot data
+to_label <- intersect(svg_genes, rownames(p_hvg$data))[1:20]
+
+LabelPoints(plot = p_hvg, points = to_label, repel = TRUE)
+```
+
+# heatmap of top 50 SVGs
+```{r human-svg-heatmap}
+DefaultAssay(human_seurat) <- "SCT"
+
+svg_ranked <- svg_df[order(svg_df$p.value, -svg_df$observed), , drop = FALSE]
+svg_top50  <- rownames(svg_ranked)[1:50]
+
+DoHeatmap(
+  human_seurat,
+  features = svg_top50,
+  size = 3
+) + NoLegend()
+
+```
+
+# plot heatmap by clusters - first need to generate clusters
+```{r}
+options(future.globals.maxSize = 8 * 1024^3)
+library(future)
+plan(multisession)  # or sequential
+
+DefaultAssay(human_seurat) <- "SCT"
+
+human_seurat <- Seurat::RunPCA(human_seurat, verbose = FALSE)
+human_seurat <- Seurat::FindNeighbors(human_seurat, reduction = "pca", dims = 1:30, verbose = FALSE)
+
+# check graph exists right before clustering
+names(human_seurat@graphs)
+
+human_seurat <- Seurat::FindClusters(human_seurat, graph.name = "SCT_snn", resolution = 0.5, verbose = FALSE)
+```
+
+```{r}
+# view cluster identities
+table(Idents(human_seurat))
+colnames(human_seurat@meta.data)
+```
+
+# Heatmap of top 50 SVGs by clusters
+```{r}
+DoHeatmap(
+  human_seurat,
+  features = svg_top50,
+  group.by = "seurat_clusters",
+  size = 3
+) + NoLegend()
 ```
 
