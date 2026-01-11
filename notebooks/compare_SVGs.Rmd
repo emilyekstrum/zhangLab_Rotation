@@ -235,3 +235,105 @@ setdiff(nn_top, seu_top)[1:20]
 # genes Seurat called significant but nnSVG did not
 setdiff(seu_top, nn_top)[1:20]
 ```
+
+
+# ---------------- rank-rank scatterplots (mouse + human) ---------------- #
+
+```{r rank-rank-mouse-human, message=FALSE, warning=FALSE}
+
+# build rank rank dataframe
+build_rankrank_df <- function(nn_path, seu_path,
+                              nn_pcol_candidates = c("padj", "pval", "p.value"),
+                              seu_pcol_candidates = c("p.value", "pval", "padj"),
+                              label = "dataset",
+                              topN_label = 200) {
+  nn_df  <- as.data.frame(readRDS(nn_path))
+  seu_df <- as.data.frame(readRDS(seu_path))
+
+  # make sure gene identifiers are present
+  if (!"gene" %in% names(nn_df))  nn_df$gene  <- rownames(nn_df)
+  if (!"gene" %in% names(seu_df)) seu_df$gene <- rownames(seu_df)
+
+  # get p-value columns 
+  nn_pcol  <- intersect(nn_pcol_candidates, names(nn_df))[1]
+  seu_pcol <- intersect(seu_pcol_candidates, names(seu_df))[1]
+
+  if (is.na(nn_pcol))  stop(paste("No nnSVG p-value column found in:", nn_path))
+  if (is.na(seu_pcol)) stop(paste("No Seurat p-value column found in:", seu_path))
+
+  # keep only the needed cols
+  nn_sub  <- nn_df[,  c("gene", nn_pcol),  drop = FALSE]
+  seu_sub <- seu_df[, c("gene", seu_pcol), drop = FALSE]
+  names(nn_sub)[2]  <- "p_nn"
+  names(seu_sub)[2] <- "p_seu"
+
+  # to numeric (handles weird column types)
+  nn_sub$p_nn  <- as.numeric(nn_sub$p_nn)
+  seu_sub$p_seu <- as.numeric(seu_sub$p_seu)
+
+  # remove missing / non-finite p-values
+  nn_sub  <- nn_sub[is.finite(nn_sub$p_nn), , drop = FALSE]
+  seu_sub <- seu_sub[is.finite(seu_sub$p_seu), , drop = FALSE]
+
+  # merge on common genes
+  m <- merge(nn_sub, seu_sub, by = "gene")
+
+  # rank by smallest p-value = rank 1 (strongest SVG evidence)
+  m$rank_nn  <- rank(m$p_nn,  ties.method = "average")
+  m$rank_seu <- rank(m$p_seu, ties.method = "average")
+
+  # mark top genes
+  m$top_any <- (m$rank_nn <= topN_label) | (m$rank_seu <= topN_label)
+  m$dataset <- label
+
+  m
+}
+
+# get mouse and human dataframes
+topN <- 200
+
+mouse_rr <- build_rankrank_df(
+  nn_path  = params$mouse_nnSVG_SVG_path,
+  seu_path = params$mouse_seurat_SVG_path,
+  label    = "Mouse",
+  topN_label = topN
+)
+
+human_rr <- build_rankrank_df(
+  nn_path  = params$human_nnSVG_SVG_path,
+  seu_path = params$human_seurat_SVG_path,
+  label    = "Human",
+  topN_label = topN
+)
+
+#plot
+rankrank_plot <- function(df, title) {
+  ggplot(df, aes(x = rank_nn, y = rank_seu)) +
+    geom_point(alpha = 0.35, size = 0.8) +
+    geom_point(data = df[df$top_any, , drop = FALSE],
+               alpha = 0.9, size = 1.1) +
+    scale_x_log10() +
+    scale_y_log10() +
+    labs(
+      title = title,
+      x = "nnSVG rank (smaller p = higher rank)",
+      y = "Seurat rank (smaller p = higher rank)"
+    ) +
+    theme_classic()
+}
+
+p_mouse <- rankrank_plot(mouse_rr, paste0("Mouse rank–rank (top ", topN, ")"))
+p_human <- rankrank_plot(human_rr, paste0("Human rank–rank (top ", topN, ")"))
+
+#show plots side by side
+p_mouse + p_human
+```
+
+The vertical lines at low nnSVG ranks indicate nnSVG found spatial structure that Seurat did not pick up on for those genes.
+The horizontal lines at low seurat ranks indicate Seurat found spatial structure that nnSVG did not pick up on for those genes.
+
+Lack of diagonal structure indicates disagreement between the two methods in ranking genes by spatial significance. 
+
+Larger "cloud" of points in the human plot indicate the two SVGs methods converge more in the human data than the mouse data.
+
+nnSVG captures global spatial patterns via Gaussian processes, while Seurat's method is based on local spatial autocorrelation (Moran's I). This difference likely contributes to the discrepancies observed in SVG rankings between the two methods.
