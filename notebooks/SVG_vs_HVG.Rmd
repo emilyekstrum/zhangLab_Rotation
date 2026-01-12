@@ -11,8 +11,8 @@ params:
   human_seurat_SVG_path: "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/seurat_human_svg_table.rds"
   human_nnSVG_SVG_path: "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/nnSVG_human_results.rds"
   
-  mouse_HVG_path: "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/seurat_mouse_hvg_table.rds"
-  human_HVG_path: "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/seurat_human_hvg_table.rds"
+  mouse_HVG_path: "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/mouse_hvg_matrix.rds"
+  human_HVG_path: "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/human_hvg_matrix.rds"
   
   seed: 123
 ---
@@ -43,8 +43,9 @@ pkgs <- c(
   "tibble",
   "patchwork",
   "Rfast2",
-  "STew",
-  "BiocManager"
+  "BiocManager",
+  "tidyverse",
+  "UpSetR"
 )
 
 to_install <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
@@ -57,3 +58,240 @@ lapply(pkgs, library, character.only = TRUE)
 ```
 
 # load in mouse data
+```{r}
+mouse_svg_seurat <- readRDS(params$mouse_seurat_SVG_path)
+mouse_svg_nnSVG <- readRDS(params$mouse_nnSVG_SVG_path)
+mouse_hvg <- readRDS(params$mouse_HVG_path)
+```
+
+# inspect data frames
+```{r}
+class(readRDS(params$mouse_nnSVG_SVG_path)) #data.frame
+class(readRDS(params$mouse_seurat_SVG_path)) #data.frame
+class(readRDS(params$mouse_HVG_path)) #matrix
+```
+
+# utils
+```{r}
+#get gene names from data.frame or matrix
+extract_genes_from_df <- function(df, name = "df") {
+  stopifnot(is.data.frame(df))
+  # get gene names from cols
+  candidate_cols <- c("gene", "genes", "feature", "features", "rowname", "rownames", "Gene", "Feature")
+  hit <- intersect(candidate_cols, colnames(df))
+  if (length(hit) > 0) {
+    g <- df[[hit[1]]]
+  } else if (!is.null(rownames(df)) && any(nzchar(rownames(df)))) {
+    g <- rownames(df)
+  } else {
+    stop(sprintf(
+      "Couldn't find gene identifiers in %s. Add a gene column or rownames(). Colnames are: %s",
+      name, paste(colnames(df), collapse = ", ")
+    ))
+  }
+  g <- as.character(g)
+  g <- g[!is.na(g) & nzchar(g)]
+  unique(g)
+}
+
+extract_genes_from_hvg <- function(hvg, name = "hvg") {
+  #row names in dgCMatrix
+  if (inherits(hvg, "dgCMatrix")) {
+    g <- rownames(hvg)
+    if (is.null(g) || !any(nzchar(g))) {
+      stop(sprintf("%s is dgCMatrix but has no rownames(). Put gene names in rownames.", name))
+    }
+    return(unique(g))
+  }
+
+  # to save HVGs as data.frame
+  if (is.character(hvg)) return(unique(hvg))
+  if (is.data.frame(hvg)) return(extract_genes_from_df(hvg, name))
+  stop(sprintf("Unsupported HVG object type for %s: %s", name, paste(class(hvg), collapse = "/")))
+}
+
+#jaccard index
+jaccard <- function(a, b) {
+  a <- unique(a); b <- unique(b)
+  inter <- length(intersect(a, b))
+  uni   <- length(union(a, b))
+  if (uni == 0) return(NA_real_)
+  inter / uni
+}
+```
+
+# get mouse gene sets
+```{r}
+mouse_genes_svg_seurat <- extract_genes_from_df(mouse_svg_seurat, "mouse_svg_seurat")
+mouse_genes_svg_nnSVG  <- extract_genes_from_df(mouse_svg_nnSVG,  "mouse_svg_nnSVG")
+mouse_genes_hvg        <- extract_genes_from_hvg(mouse_hvg,        "mouse_hvg")
+
+mouse_sets <- list(
+  Seurat_SVG = mouse_genes_svg_seurat,
+  nnSVG      = mouse_genes_svg_nnSVG,
+  Seurat_HVG = mouse_genes_hvg
+)
+```
+
+# jaccard index
+```{r}
+mouse_pair_names <- combn(names(mouse_sets), 2, simplify = FALSE)
+
+mouse_jaccard_tbl <- map_dfr(mouse_pair_names, function(p) {
+  a <- p[1]; b <- p[2]
+  tibble(
+    set_a = a,
+    set_b = b,
+    n_a = length(mouse_sets[[a]]),
+    n_b = length(mouse_sets[[b]]),
+    n_intersection = length(intersect(mouse_sets[[a]], mouse_sets[[b]])),
+    n_union = length(union(mouse_sets[[a]], mouse_sets[[b]])),
+    jaccard = jaccard(mouse_sets[[a]], mouse_sets[[b]])
+  )
+})
+
+print(mouse_jaccard_tbl)
+```
+
+```{r}
+# 3-way overlap counts 
+mouse_overlap_3way <- tibble(
+  n_all_three = length(Reduce(intersect, mouse_sets)),
+  n_any_two_or_more = sum(table(
+    Reduce(c, lapply(names(mouse_sets), function(nm) {
+      data.frame(gene = mouse_sets[[nm]], set = nm)
+    }))$gene
+  ) >= 2) # can remove
+)
+
+print(mouse_overlap_3way)
+```
+
+```{r}
+# UpSet plot
+UpSetR::upset(UpSetR::fromList(mouse_sets),
+              order.by = "freq",
+              nsets = length(mouse_sets),
+              nintersects = NA)
+```
+
+```{r}
+# jaccard heatmap
+mouse_mat <- matrix(1, nrow = length(mouse_sets), ncol = length(mouse_sets),
+              dimnames = list(names(mouse_sets), names(mouse_sets)))
+for (i in seq_along(mouse_sets)) {
+  for (j in seq_along(mouse_sets)) {
+    if (i == j) next
+    mouse_mat[i, j] <- jaccard(mouse_sets[[i]], mouse_sets[[j]])
+  }
+}
+
+mouse_heat_df <- as.data.frame(as.table(mouse_mat)) %>%
+  rename(set_a = Var1, set_b = Var2, jaccard = Freq)
+
+ggplot(mouse_heat_df, aes(x = set_b, y = set_a, fill = jaccard)) +
+  geom_tile(color = "white", linewidth = 0.3) +
+  geom_text(aes(label = sprintf("%.2f", jaccard)), size = 3) +
+  coord_fixed() +
+  labs(x = NULL, y = NULL, fill = "Jaccard",
+       title = "Mouse Data Pairwise overlap (Jaccard index)") +
+  theme_minimal(base_size = 12) +
+  theme(axis.text.x = element_text(angle = 25, hjust = 1))
+```
+
+
+#---------------- human data -----------------#
+
+
+# load in human data
+```{r}
+human_svg_seurat <- readRDS(params$human_seurat_SVG_path)
+human_svg_nnSVG <- readRDS(params$human_nnSVG_SVG_path)
+human_hvg <- readRDS(params$human_HVG_path)
+```
+
+# inspect data frames
+```{r}
+class(readRDS(params$human_nnSVG_SVG_path)) #data.frame
+class(readRDS(params$human_seurat_SVG_path)) #data.frame
+class(readRDS(params$human_HVG_path)) #matrix
+```
+
+# get human gene sets
+```{r}
+human_genes_svg_seurat <- extract_genes_from_df(human_svg_seurat, "human_svg_seurat")
+human_genes_svg_nnSVG  <- extract_genes_from_df(human_svg_nnSVG,  "human_svg_nnSVG")
+human_genes_hvg        <- extract_genes_from_hvg(human_hvg,        "human_hvg")
+
+human_sets <- list(
+  Seurat_SVG = human_genes_svg_seurat,
+  nnSVG      = human_genes_svg_nnSVG,
+  Seurat_HVG = human_genes_hvg
+)
+```
+
+# jaccard index for human genes
+```{r}
+human_pair_names <- combn(names(human_sets), 2, simplify = FALSE)
+
+human_jaccard_tbl <- map_dfr(human_pair_names, function(p) {
+  a <- p[1]; b <- p[2]
+  tibble(
+    set_a = a,
+    set_b = b,
+    n_a = length(human_sets[[a]]),
+    n_b = length(human_sets[[b]]),
+    n_intersection = length(intersect(human_sets[[a]], human_sets[[b]])),
+    n_union = length(union(human_sets[[a]], human_sets[[b]])),
+    jaccard = jaccard(human_sets[[a]], human_sets[[b]])
+  )
+})
+
+print(human_jaccard_tbl)
+```
+
+```{r}
+# 3-way overlap counts 
+human_overlap_3way <- tibble(
+  n_all_three = length(Reduce(intersect, human_sets)),
+  n_any_two_or_more = sum(table(
+    Reduce(c, lapply(names(human_sets), function(nm) {
+      data.frame(gene = human_sets[[nm]], set = nm)
+    }))$gene
+  ) >= 2) # can remove
+)
+
+print(human_overlap_3way)
+```
+
+```{r}
+# UpSet plot
+UpSetR::upset(UpSetR::fromList(human_sets),
+              order.by = "freq",
+              nsets = length(human_sets),
+              nintersects = NA)
+```
+
+```{r}
+# jaccard heatmap
+human_mat <- matrix(1, nrow = length(human_sets), ncol = length(human_sets),
+              dimnames = list(names(human_sets), names(human_sets)))
+for (i in seq_along(human_sets)) {
+  for (j in seq_along(human_sets)) {
+    if (i == j) next
+    human_mat[i, j] <- jaccard(human_sets[[i]], human_sets[[j]])
+  }
+}
+
+human_heat_df <- as.data.frame(as.table(human_mat)) %>%
+  rename(set_a = Var1, set_b = Var2, jaccard = Freq)
+
+ggplot(human_heat_df, aes(x = set_b, y = set_a, fill = jaccard)) +
+  geom_tile(color = "white", linewidth = 0.3) +
+  geom_text(aes(label = sprintf("%.2f", jaccard)), size = 3) +
+  coord_fixed() +
+  labs(x = NULL, y = NULL, fill = "Jaccard",
+       title = "Human Data Pairwise overlap (Jaccard index)") +
+  theme_minimal(base_size = 12) +
+  theme(axis.text.x = element_text(angle = 25, hjust = 1))
+```
