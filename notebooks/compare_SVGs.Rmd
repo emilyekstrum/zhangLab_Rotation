@@ -123,6 +123,8 @@ jaccard <- length(common_svg_genes) / length(union(nn_top, seu_top))
 jaccard # 0.1947
 ```
 
+Low similarity between the two methods in identifying top spatially variable genes in the mouse data as indicated by the Jaccard index of 0.1947. This suggests that nnSVG and Seurat FindSpatiallyVariableGenes() capture different aspects of spatial variability in gene expression.
+
 # correlation of shared genes
 ```{r}
 shared <- intersect(nn_ranked$gene, seu_ranked$gene)
@@ -132,6 +134,8 @@ seu_rank_vec <- match(shared, seu_ranked$gene)
 
 cor(nn_rank_vec, seu_rank_vec, method = "spearman", use = "complete.obs") # 0.5547
 ```
+
+There is moderate agreement in the ranking of shared genes between nnSVG and Seurat FindSpatiallyVariableGenes() in the mouse data, with a Spearman correlation.
 
 # look at gene disagreements
 ```{r}
@@ -143,6 +147,8 @@ setdiff(nn_top, seu_top)[1:20]
 # genes Seurat called significant but nnSVG did not
 setdiff(seu_top, nn_top)[1:20]
 ```
+
+nnSVG did not find as many blood related genes significant compared to Seurat in the mouse data.
 
 # ------------------- human data ------------------ #
 
@@ -215,6 +221,8 @@ jaccard <- length(common_svg_genes) / length(union(nn_top, seu_top))
 jaccard # 0.1507
 ```
 
+Low similarity between the two methods in identifying top spatially variable genes in the human data as indicated by the Jaccard index of 0.1507. This agrees with the previous statement that nnSVG and Seurat FindSpatiallyVariableGenes() capture different aspects of spatial variability in gene expression.
+
 # correlation of shared genes
 ```{r}
 shared <- intersect(nn_ranked$gene, seu_ranked$gene)
@@ -224,6 +232,8 @@ seu_rank_vec <- match(shared, seu_ranked$gene)
 
 cor(nn_rank_vec, seu_rank_vec, method = "spearman", use = "complete.obs") # 0.5122
 ```
+
+Similar as above, there is moderate agreement in the ranking of shared genes between nnSVG and Seurat FindSpatiallyVariableGenes() in the human data, with a Spearman correlation.
 
 # look at gene disagreements
 ```{r}
