@@ -104,6 +104,7 @@ mouse_auto_genes_list <- mouse_svgs %>%
 
 head(mouse_auto_genes_list)
 head(mouse_svgs) # LR stat is log likelihood ratio
+length(rownames(mouse_svgs)) # 5000 genes
 ```
 
 ```{r}
@@ -120,7 +121,7 @@ length(rownames(mouse_res))
 
 # remove blood genes
 mouse_res <- mouse_res[!mouse_res$gene %in% c("Hba-a1", "Hba-a2", "Hbb-bs", "Hbb-bt"), ]
-length(rownames(mouse_res))
+length(rownames(mouse_res)) # 4984 genes
 
 # keep finite padj
 mouse_res <- mouse_res[is.finite(mouse_res$padj) & !is.na(mouse_res$padj), ]
@@ -174,10 +175,6 @@ ggplot(mouse_res, aes(x = padj)) +
 ```
 
 ```{r}
-library(Seurat)
-library(Matrix)
-library(patchwork)
-
 # pick top genes by padj
 top_n <- 6
 mouse_top_genes <- head(mouse_res$gene[order(mouse_res$padj)], top_n)
@@ -223,6 +220,67 @@ ggplot(mouse_res, aes(x = prop_sv, y = neglog10_padj)) +
 
 ```
 
+# heatmap of top 50 SVGs using DoHeatmap()
+```{r}
+top50_genes <- mouse_res %>% 
+  arrange(padj) %>%
+  slice_head(n = 50) %>%
+  pull(gene) 
+DoHeatmap(mouse_seurat, features = top50_genes) + 
+  labs(title = "Top 50 nnSVG genes heatmap") 
+```
+
+
+# plot heatmap by clusters - first need to generate clusters
+```{r}
+options(future.globals.maxSize = 8 * 1024^3)
+library(future)
+plan(multisession)  # or sequential
+
+DefaultAssay(mouse_seurat) <- "SCT"
+
+mouse_seurat <- Seurat::RunPCA(mouse_seurat, verbose = FALSE)
+mouse_seurat <- Seurat::FindNeighbors(mouse_seurat, reduction = "pca", dims = 1:30, verbose = FALSE)
+
+# check graph exists right before clustering
+names(mouse_seurat@graphs)
+
+mouse_seurat <- Seurat::FindClusters(mouse_seurat, graph.name = "SCT_snn", resolution = 0.5, verbose = FALSE)
+```
+
+```{r}
+# view cluster identities
+table(Idents(mouse_seurat))
+colnames(mouse_seurat@meta.data)
+```
+
+# Heatmap of top 50 SVGs by clusters
+```{r}
+DoHeatmap(
+  mouse_seurat,
+  features = top50_genes,
+  group.by = "seurat_clusters",
+  size = 3
+) + NoLegend()
+```
+
+There is evidence of cluster-specific expression patterns for some of the top SVGs.
+Cluster 0 is defined by high expression of Fth1, Mbp, Plp1, Mobp, Apod, and Td.
+  - slight blood contamination evidence, but other genes associated with myelin
+Cluster 1 is weakly associated with high expression of Pcsk1n, Nrgn, and Cpe.
+  - neurotransmitter related genes
+Cluster 2 is defined by high expression of Snap25, pcp2, and Pvalp.
+  - neurotransmitter related genes for motor activity and cognitive function
+Cluster 3 is defined by high expression of Snap25, Pvalp, Gnas, Atp1b1, Rps29, and Ndufa4.
+  - protein synthesis related genes - not sure what to make of this?
+Cluster 4 is strongly associated with high expression of Pcb4, Ckb, Pvalp, Gapdh, and Gng13.
+  - regulate ATP in the brain and signaling
+Cluster 5 is defined by high expression of Ptgds, Cpe, and Nrgn.
+  - enzymatic brain functions
+Cluster 6 has high expression of Pcp4, Snap25, Cpe, and Calm1.
+  - neurotransmitter and calcium binding
+Cluster 7 has high expression of Nrgn, Calm2, and Calm1.
+  - neurotransmitter and calcium binding
 
 # -------------- human data ------------------ # 
 
@@ -400,3 +458,56 @@ ggplot(human_res, aes(x = prop_sv, y = neglog10_padj)) +
   theme_classic()
 
 ```
+
+# heatmap of top 50 SVGs using DoHeatmap()
+```{r}
+top50_genes <- human_res %>% 
+  arrange(padj) %>%
+  slice_head(n = 50) %>%
+  pull(gene) 
+DoHeatmap(human_seurat, features = top50_genes) + 
+  labs(title = "Top 50 nnSVG genes heatmap") 
+```
+
+# plot heatmap by clusters - first need to generate clusters
+```{r}
+options(future.globals.maxSize = 8 * 1024^3)
+library(future)
+plan(multisession)  # or sequential
+
+DefaultAssay(human_seurat) <- "SCT"
+
+human_seurat <- Seurat::RunPCA(human_seurat, verbose = FALSE)
+human_seurat <- Seurat::FindNeighbors(human_seurat, reduction = "pca", dims = 1:30, verbose = FALSE)
+
+# check graph exists right before clustering
+names(human_seurat@graphs)
+
+human_seurat <- Seurat::FindClusters(human_seurat, graph.name = "SCT_snn", resolution = 0.5, verbose = FALSE)
+```
+
+```{r}
+# view cluster identities
+table(Idents(human_seurat))
+colnames(human_seurat@meta.data)
+```
+
+
+# Heatmap of top 50 SVGs by clusters
+```{r}
+DoHeatmap(
+  human_seurat,
+  features = top50_genes,
+  group.by = "seurat_clusters",
+  size = 3
+) + NoLegend()
+```
+
+Weak evidence of cluster-specific expression patterns for some of the top SVGs.
+Cluster 3 is defined by high expression of Mbp, Plp1, Ftr1, Gfap, Crayb, Tpgds, and Cnp.
+  - myelin and glial associated genes
+Cluster 4 has high expression of Scgb2a2.
+  - secretoglobin family gene
+
+The other clusters have less clear expression patterns.
+
