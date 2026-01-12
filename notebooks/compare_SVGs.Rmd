@@ -132,7 +132,7 @@ shared <- intersect(nn_ranked$gene, seu_ranked$gene)
 nn_rank_vec  <- match(shared, nn_ranked$gene)
 seu_rank_vec <- match(shared, seu_ranked$gene)
 
-cor(nn_rank_vec, seu_rank_vec, method = "spearman", use = "complete.obs") # 0.5547
+cor(nn_rank_vec, seu_rank_vec, method = "spearman", use = "complete.obs") # 0.679
 ```
 
 There is moderate agreement in the ranking of shared genes between nnSVG and Seurat FindSpatiallyVariableGenes() in the mouse data, with a Spearman correlation.
@@ -230,7 +230,7 @@ shared <- intersect(nn_ranked$gene, seu_ranked$gene)
 nn_rank_vec  <- match(shared, nn_ranked$gene)
 seu_rank_vec <- match(shared, seu_ranked$gene)
 
-cor(nn_rank_vec, seu_rank_vec, method = "spearman", use = "complete.obs") # 0.5122
+cor(nn_rank_vec, seu_rank_vec, method = "spearman", use = "complete.obs") # 0.5098
 ```
 
 Similar as above, there is moderate agreement in the ranking of shared genes between nnSVG and Seurat FindSpatiallyVariableGenes() in the human data, with a Spearman correlation.
@@ -324,6 +324,9 @@ rankrank_plot <- function(df, title) {
                alpha = 0.9, size = 1.1) +
     scale_x_log10() +
     scale_y_log10() +
+    xlim(1, 10000) +
+    ylim(1, 10000) +
+    #coord_cartesian(xlim = c(0, 10000), ylim = c(0, 10000)) +
     labs(
       title = title,
       x = "nnSVG rank (smaller p = higher rank)",
