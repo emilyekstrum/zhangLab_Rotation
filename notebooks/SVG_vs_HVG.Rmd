@@ -137,6 +137,8 @@ mouse_sets <- list(
 ```{r}
 mouse_pair_names <- combn(names(mouse_sets), 2, simplify = FALSE)
 
+# TODO: limit this to top N genes? 
+
 mouse_jaccard_tbl <- map_dfr(mouse_pair_names, function(p) {
   a <- p[1]; b <- p[2]
   tibble(
@@ -153,6 +155,9 @@ mouse_jaccard_tbl <- map_dfr(mouse_pair_names, function(p) {
 print(mouse_jaccard_tbl)
 ```
 
+The Seurat HVG and SVGs have high agreement based on the Jaccard index. 
+nnSVGs had lower yet still high agreement with both Seurat methods. 
+
 ```{r}
 # 3-way overlap counts 
 mouse_overlap_3way <- tibble(
@@ -167,6 +172,8 @@ mouse_overlap_3way <- tibble(
 print(mouse_overlap_3way)
 ```
 
+8,659 genes overlap between all three variable gene identification methods.
+
 ```{r}
 # UpSet plot
 UpSetR::upset(UpSetR::fromList(mouse_sets),
@@ -175,29 +182,7 @@ UpSetR::upset(UpSetR::fromList(mouse_sets),
               nintersects = NA)
 ```
 
-```{r}
-# jaccard heatmap
-mouse_mat <- matrix(1, nrow = length(mouse_sets), ncol = length(mouse_sets),
-              dimnames = list(names(mouse_sets), names(mouse_sets)))
-for (i in seq_along(mouse_sets)) {
-  for (j in seq_along(mouse_sets)) {
-    if (i == j) next
-    mouse_mat[i, j] <- jaccard(mouse_sets[[i]], mouse_sets[[j]])
-  }
-}
-
-mouse_heat_df <- as.data.frame(as.table(mouse_mat)) %>%
-  rename(set_a = Var1, set_b = Var2, jaccard = Freq)
-
-ggplot(mouse_heat_df, aes(x = set_b, y = set_a, fill = jaccard)) +
-  geom_tile(color = "white", linewidth = 0.3) +
-  geom_text(aes(label = sprintf("%.2f", jaccard)), size = 3) +
-  coord_fixed() +
-  labs(x = NULL, y = NULL, fill = "Jaccard",
-       title = "Mouse Data Pairwise overlap (Jaccard index)") +
-  theme_minimal(base_size = 12) +
-  theme(axis.text.x = element_text(angle = 25, hjust = 1))
-```
+8,659 genes overlap between seurat HVG and SVG methods. This drops down to 1,337 between all three methods, and 1,324 genes are unique to nnSVG.4 genes are unique to seurat SVGs.
 
 
 #---------------- human data -----------------#
@@ -250,6 +235,9 @@ human_jaccard_tbl <- map_dfr(human_pair_names, function(p) {
 print(human_jaccard_tbl)
 ```
 
+The Seurat HVG and SVGs have high agreement based on the Jaccard index. 
+Similar to the mouse dataset, nnSVGs had lower agreement with both Seurat methods. 
+
 ```{r}
 # 3-way overlap counts 
 human_overlap_3way <- tibble(
@@ -264,6 +252,8 @@ human_overlap_3way <- tibble(
 print(human_overlap_3way)
 ```
 
+4,985 genes overlap between all three variable gene identification methods. This number is around the mouse overlap for all three methods (4,258).
+
 ```{r}
 # UpSet plot
 UpSetR::upset(UpSetR::fromList(human_sets),
@@ -272,26 +262,4 @@ UpSetR::upset(UpSetR::fromList(human_sets),
               nintersects = NA)
 ```
 
-```{r}
-# jaccard heatmap
-human_mat <- matrix(1, nrow = length(human_sets), ncol = length(human_sets),
-              dimnames = list(names(human_sets), names(human_sets)))
-for (i in seq_along(human_sets)) {
-  for (j in seq_along(human_sets)) {
-    if (i == j) next
-    human_mat[i, j] <- jaccard(human_sets[[i]], human_sets[[j]])
-  }
-}
-
-human_heat_df <- as.data.frame(as.table(human_mat)) %>%
-  rename(set_a = Var1, set_b = Var2, jaccard = Freq)
-
-ggplot(human_heat_df, aes(x = set_b, y = set_a, fill = jaccard)) +
-  geom_tile(color = "white", linewidth = 0.3) +
-  geom_text(aes(label = sprintf("%.2f", jaccard)), size = 3) +
-  coord_fixed() +
-  labs(x = NULL, y = NULL, fill = "Jaccard",
-       title = "Human Data Pairwise overlap (Jaccard index)") +
-  theme_minimal(base_size = 12) +
-  theme(axis.text.x = element_text(angle = 25, hjust = 1))
-```
+4,985 genes overlap between all three methods. 5,015 genes are common between Seurat HVGs and SVGs, and 2 genes are unique to nnSVG. 
