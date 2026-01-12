@@ -35,8 +35,8 @@ if (requireNamespace("RhpcBLASctl", quietly = TRUE)) {
 library(BiocParallel)
 library(nnSVG)
 
-bp <- SnowParam(workers = 3, type = "SOCK")  # safe parallel on macOS
-# OR, if you just want maximum stability:
+bp <- SnowParam(workers = 3, type = "SOCK")  # parallel on macOS
+# or for max stability:
 # bp <- SerialParam()
 ```
 
@@ -77,7 +77,7 @@ mouse_exp_mat <- mouse_exp_mat[mouse_keep, , drop = FALSE]
 
 # cap to 3000 most variable genes using sparse variance proxy
 mouse_gene_vars <- Matrix::rowMeans(mouse_exp_mat^2) - (Matrix::rowMeans(mouse_exp_mat))^2
-mouse_top <- names(sort(mouse_gene_vars, decreasing = TRUE))[1:min(5000, length(mouse_gene_vars))]
+mouse_top <- names(sort(mouse_gene_vars, decreasing = TRUE))[1:min(10000, length(mouse_gene_vars))]
 mouse_exp_mat <- mouse_exp_mat[mouse_top, , drop = FALSE]
 
 # check you have dgCMatrix
