@@ -93,7 +93,7 @@ counts <- Read10X_h5(h5_path)
 # handle a matrix or a named list of matrices 
 if (is.list(counts)) {
   message("Read10X_h5 returned a list with names: ", paste(names(counts), collapse = ", "))
-  # try to find the gene expression matrix
+  # get the gene expression matrix
   key <- intersect(names(counts), c("Gene Expression","RNA","gene_expression","GeneExpression"))
   if (length(key) == 0) key <- names(counts)[1]
   counts <- counts[[key[1]]]
@@ -104,7 +104,7 @@ stopifnot(inherits(counts, c("dgCMatrix","matrix")))
 dim(counts) # genes x cells
 ```
 
-Counts matrix with `r nrow(counts)` genes and `r ncol(counts)` cells loaded
+Counts matrix with 33,538 genes and 3,639 cells 
 
 # Load in metadata (spatial coords + manual annotations)
 merges metadata by cell barcode 
@@ -208,7 +208,7 @@ human_seurat
 
 ```{r qc-basic}
 features_to_plot <- c("nFeature_RNA", "nCount_RNA", "percent.mt")
-VlnPlot(seu, features = features_to_plot, ncol = length(features_to_plot), pt.size = 0.1)
+VlnPlot(human_seurat, features = features_to_plot, ncol = length(features_to_plot), pt.size = 0.1)
 ```
 nFeature_RNA: Number of detected genes per spot
   - Even spread of genes detected per spot
@@ -258,7 +258,7 @@ expr <- human_seurat@meta.data$nFeature_RNA >= params$nFeature_low &
         human_seurat@meta.data$nCount_RNA <= params$nCount_high &
         human_seurat@meta.data$percent.mt <= params$percent_mt_high
 
-  if ("percent.mt" %in% colnames(seu@meta.data)) {
+  if ("percent.mt" %in% colnames(human_seurat@meta.data)) {
     expr <- expr & (human_seurat@meta.data$percent.mt <= params$percent_mt_high)
   }
 
@@ -449,6 +449,22 @@ DimPlot(human_seurat_UMAP, reduction = "umap", label = TRUE) + NoLegend()
 ```
 
 4 identified cell clusters with good to poor separation in UMAP space
+
+```{r}
+# plot clusters on spatial tissue coordinates
+df <- data.frame(human_seurat_UMAP@meta.data, cluster = Idents(human_seurat_UMAP))
+
+ggplot(df, aes(x = imagecol, y = imagerow, color = cluster)) +
+  geom_point(size = 0.6) +
+  coord_fixed() +
+  scale_y_reverse() +
+  theme_classic() +
+  labs(
+    title = "UMAP clusters projected onto human tissue coordinates",
+    x = "image column",
+    y = "image row"
+  )
+```
 
 
 # Save outputs
