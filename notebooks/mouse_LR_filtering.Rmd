@@ -8,9 +8,7 @@ params:
   
   # cell chat input must be gene by cell matrices
   mouse_hvg: "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/mouse_hvg_gene_cell_matrix.rds"
-      
   mouse_nnsvg:  "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/nnSVG_mouse_svg_gene_cell_matrix.rds"
-      
   mouse_seurat_svg:  "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/seurat_mouse_svg_gene_cell_matrix.rds"
 
     
@@ -54,8 +52,6 @@ if (length(to_install) > 0) {
 lapply(pkgs, library, character.only = TRUE)
 ```
 
-# ------------ mouse data ---------------- #
-
 
 ```{r}
 # load in mouse data
@@ -69,186 +65,108 @@ head(mouse_nnsvg)
 head(mouse_seurat_svg)
 ```
 
-# try making a seurat object for each gene matrix that will be used as input for cell chat objects
-# use gene intersections between HVG/SVG matrix and retain spatial data (x,y, cell_id) from original data
 ```{r}
-# load in original mouse data with spatial coordinates
-mouse_data <- readRDS("/Users/emilyekstrum/Desktop/zhangLab/data/MouseBrain_Data/10x_mousebrain_exp_count_meta.rds")
-head(mouse_data)
-```
-
-
-```{r}
-# get gene names from each gene matrix
+# find percent similarity of genes in hvgs and svgs
 hvg_genes <- rownames(mouse_hvg)
 nnsvg_genes <- rownames(mouse_nnsvg)
 seurat_svg_genes <- rownames(mouse_seurat_svg)
+length(intersect(hvg_genes, nnsvg_genes)) / length(union(hvg_genes, nnsvg_genes))
+length(intersect(hvg_genes, seurat_svg_genes)) / length(union(hvg_genes, seurat_svg_genes))
+length(intersect(nnsvg_genes, seurat_svg_genes)) / length(union(nnsvg_genes, seurat_svg_genes))
+```
+
+
+# ----------------- nanxi's code -------------------- #
+
+```{r}
+
+CellChatDB <- CellChatDB.mouse
+showDatabaseCategory(CellChatDB)
 ```
 
 
 ```{r}
-# get gene names from original data
-original_genes <- colnames(mouse_data)
+# LR table
+db_interactions <- CellChatDB$interaction
+dplyr::glimpse(db_interactions)
 ```
 
 ```{r}
-# find intersections
-hvg_intersect <- intersect(hvg_genes, original_genes)
-nnsvg_intersect <- intersect(nnsvg_genes, original_genes)
-seurat_svg_intersect <- intersect(seurat_svg_genes, original_genes)
+# use only a subset, e.g., secreted signaling
+CellChatDB.use <- subsetDB(CellChatDB, search = "Secreted Signaling")
 ```
 
 ```{r}
-# only include intersecting genes and original x, y, and cell_id columns
-hvg_intersect <- c(hvg_intersect, "x", "y", "cell_id")
-nnsvg_intersect <- c(nnsvg_intersect, "x", "y", "cell_id")
-seurat_svg_intersect <- c(seurat_svg_intersect, "x", "y, cell_id")
+dplyr::glimpse(CellChatDB$interaction)
 ```
 
 ```{r}
-# check if intersections worked
-length(hvg_intersect)
-length(nnsvg_intersect)
-length(seurat_svg_intersect)
-```
-
-```{r}
-seurat_svg_intersect <- as.character(seurat_svg_intersect)
-missing <- setdiff(seurat_svg_intersect, colnames(mouse_data))
-if (length(missing) > 0) message("Missing columns: ", paste(head(missing, 20), collapse=", "))
-
-mouse_seurat_svg_filtered <- mouse_data[, intersect(seurat_svg_intersect, colnames(mouse_data)), drop = FALSE]
+# use all CellChatDB except for "Non-protein Signaling" for cell-cell communication analysis
+CellChatDB.use <- subsetDB(CellChatDB)
 
 ```
 
 ```{r}
-# subset original data to only include intersecting genes and original x, y, and cell_id columns
-mouse_hvg_filtered <- mouse_data[, hvg_intersect]
-mouse_nnsvg_filtered <- mouse_data[, nnsvg_intersect]
-seurat_svg_intersect <- as.character(seurat_svg_intersect)
-# special handling for seurat dataset
-missing <- setdiff(seurat_svg_intersect, colnames(mouse_data))
-if (length(missing) > 0) message("Missing columns: ", paste(head(missing, 20), collapse=", "))
-
-mouse_seurat_svg_filtered <- mouse_data[, intersect(seurat_svg_intersect, colnames(mouse_data)), drop = FALSE]
-
-# list of filtered gene matrices
-filtered_gene_matrices <- list(
-  mouse_hvg_filtered = mouse_hvg_filtered,
-  mouse_nnsvg_filtered = mouse_nnsvg_filtered
-  #mouse_seurat_svg_filtered = mouse_seurat_svg_filtered
-)
-```
-
-<!-- # get coordinate data for mouse ST data -->
-<!-- ```{r} -->
-<!-- # mouse data -->
-<!-- mouse_data <- readRDS("/Users/emilyekstrum/Desktop/zhangLab/data/MouseBrain_Data/10x_mousebrain_exp_count_meta.rds") -->
-
-<!-- # get x, y and cellid columns from mouse_data -->
-<!-- mouse_coords <- mouse_data[, c("x", "y", "cell_id")] -->
-<!-- # make cell id the row names -->
-<!-- rownames(mouse_coords) <- mouse_coords$cell_id -->
-
-<!-- head(mouse_coords) -->
-<!-- ``` -->
-
-```{r}
-# check filtered gene matrices contain x and y columns
-for (name in names(filtered_gene_matrices)) {
-  gene_matrix <- filtered_gene_matrices[[name]]
-  if (!all(c("x", "y") %in% colnames(gene_matrix))) {
-    # print which matrix is missing x or y columns
-    stop(paste("Error: 'x' and 'y' columns not found in", name))
-  }
-}
+dplyr::glimpse(CellChatDB.use$interaction)
 
 ```
 
 ```{r}
-# extract coordinate data from each filtered gene matrix
-filtered_coords <- list()
-for (name in names(filtered_gene_matrices)) {
-  gene_matrix <- filtered_gene_matrices[[name]]
-  coords <- gene_matrix[, c("x", "y"), drop = FALSE]
-  rownames(coords) <- rownames(gene_matrix)
-  filtered_coords[[name]] <- coords
-} 
+# LR table
+# use all CellChatDB except for "Non-protein Signaling" for cell-cell communication analysis
+db_interactions_use <- CellChatDB.use$interaction
+```
+
+Get LR definitions that the Visium mouse brain can support
+
+# HVGs
+```{r}
+# genes present in the expression matrix 
+hvg_genes_in_data <- rownames(mouse_hvg)
+head(hvg_genes_in_data)
+
+# Keep LR entries whose all ligand and receptor subunits exist in the data.
+
+hvg_lr_present <- db_interactions_use |>
+  rowwise() |>
+  filter(all(unlist(strsplit(ligand, "\\|")) %in% hvg_genes_in_data) &
+           all(unlist(strsplit(receptor, "\\|")) %in% hvg_genes_in_data)) |>
+  ungroup()
 ```
 
 ```{r}
-seurat_objects <- list()
-
-for (name in names(filtered_gene_matrices)) {
-
-  counts <- filtered_gene_matrices[[name]]  # genes x spots
-
-  # Create Seurat object
-  seurat_obj <- CreateSeuratObject(counts = counts, project = "SpatialData")
-
-  # Get coordinates (spots x 2) from a SEPARATE object
-  coords <- filtered_coords[[name]][, c("x", "y"), drop = FALSE]
-
-  # Align coordinates to the Seurat object's cells/spots
-  coords <- coords[Cells(seurat_obj), , drop = FALSE]
-
-  # Add to metadata (lengths now match exactly)
-  seurat_obj@meta.data$x <- coords$x
-  seurat_obj@meta.data$y <- coords$y
-
-  # Build coordinates df for the image object
-  spatial_coords <- data.frame(
-    imagerow = coords$y,
-    imagecol = coords$x,
-    row.names = rownames(coords)
-  )
-
-  DefaultAssay(seurat_obj) <- "RNA"
-
-  # Create a pseudo image object
-  seurat_obj@images[["pseudo"]] <- new(
-    Class = "SlideSeq",
-    coordinates = spatial_coords
-  )
-
-  seurat_objects[[name]] <- seurat_obj
-}
-
+nrow(hvg_lr_present)
+head(hvg_lr_present)
 ```
 
 
-# make cell chat objects for each seurat object
+# SVGs
+# using nnSVG
+
 ```{r}
-cellchat_objects <- list()
+# genes present in the expression matrix
+svg_genes_in_data <- rownames(mouse_nnsvg)
+head(svg_genes_in_data)
 
-for (name in names(seurat_objects)) {
-  seurat_obj <- seurat_objects[[name]]
-  
-  # Create CellChat object
-  cellchat <- createCellChat(object = seurat_obj, 
-                             assay = "RNA")
-  
-  # # Set the ligand-receptor database
-  # CellChatDB <- CellChatDB.mouse # use mouse database
-  # cellchat@DB <- CellChatDB
-  # 
-  # # use all of cellchat except for non protein signalling
-  # CellChatDB.use <- subsetDB(CellChatDB, search = "Secreted Signaling")
-  # cellchat@DB <- CellChatDB.use
-  # 
-  # db_interactions_use <- CellChatDB.use$interaction
-  # 
-  #   # genes present in the expression matrix
-  # genes_in_data <- colnames(exp)
-  # 
-  # # Keep LR entries whose all ligand and receptor subunits exist in the data.
-  # 
-  # lr_present <- db_interactions_use |>
-  #   rowwise() |>
-  #   filter(all(unlist(strsplit(ligand, "\\|")) %in% genes_in_data) &
-  #            all(unlist(strsplit(receptor, "\\|")) %in% genes_in_data)) |>
-  #   ungroup()
+# Keep LR entries whose all ligand and receptor subunits exist in the data.
 
-}
+svg_lr_present <- db_interactions_use |>
+  rowwise() |>
+  filter(all(unlist(strsplit(ligand, "\\|")) %in% svg_genes_in_data) &
+           all(unlist(strsplit(receptor, "\\|")) %in% svg_genes_in_data)) |>
+  ungroup()
 ```
 
+```{r}
+nrow(svg_lr_present)
+head(svg_lr_present)
+```
+
+```{r}
+# find differences in interaction names between hvgs and svgs
+hvg_interactions <- hvg_lr_present$interaction_name
+svg_interactions <- svg_lr_present$interaction_name
+length(intersect(hvg_interactions, svg_interactions)) / length(union(hvg_interactions, svg_interactions))
+```
+
+The LR interactions are similar for the mouse dataset.
