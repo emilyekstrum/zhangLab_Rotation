@@ -135,7 +135,7 @@ head(mouse_hvg_no_blood, 20)
 ```
 
 
-# store mouse HVG in a cell by gene matrix
+# store mouse HVG in a gene by cell matrix
 ```{r mouse-hvg-matrix}
 mouse_hvg_matrix <- GetAssayData(mouse_seurat, assay = "SCT", layer = "data")[mouse_hvg_no_blood, ]
 mouse_hvg_matrix[1:5, 1:5]
@@ -146,20 +146,20 @@ head(rownames(mouse_hvg_matrix), 20)
 
 # save mouse HVG matrix
 ```{r save-mouse-hvg-matrix}
-saveRDS(mouse_hvg_matrix, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/mouse_hvg_cell_gene_matrix.rds")
+saveRDS(mouse_hvg_matrix, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/mouse_hvg_gene_cell_matrix.rds")
 ```
 
-# or store as mouse HVG gene by cell matrix
+# or store as mouse HVG cell by gene matrix
 ```{r}
 mouse_hvg_matrix_gene_by_cell <- t(mouse_hvg_matrix)
-dim(mouse_hvg_matrix_gene_by_cell) # number of HVGs x number of cells
+dim(mouse_hvg_matrix_gene_by_cell) 
 
 head(mouse_hvg_matrix_gene_by_cell[, 1:20])
 ```
 
-# save mouse HVG gene by cell matrix
+# save mouse HVG cell by gene matrix
 ```{r save-mouse-hvg-matrix-gene-by-cell}
-saveRDS(mouse_hvg_matrix_gene_by_cell, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/mouse_hvg_gene_cell_matrix.rds")
+saveRDS(mouse_hvg_matrix_gene_by_cell, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/mouse_hvg_cell_gene_matrix.rds")
 ```
 
 
@@ -245,7 +245,7 @@ ggplot(df, aes(x = imagecol, y = imagerow, color = expr)) +
 
 # store mouse HVG in a gene by cell matrix
 ```{r mouse-hvg-matrix}
-human_hvg_matrix <- GetAssayData(human_seurat, assay = "SCT", layer = "data")[hvg_human, ]
+human_hvg_matrix <- GetAssayData(human_seurat, assay = "SCT", layer = "data")[human_hvg, ]
 human_hvg_matrix[1:5, 1:5]
 
 head(rownames(human_hvg_matrix), 20)
