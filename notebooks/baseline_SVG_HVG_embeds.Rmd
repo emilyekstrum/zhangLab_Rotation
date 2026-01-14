@@ -66,11 +66,11 @@ mouse_seurat_svg_matrix <- readRDS(params$mouse_seurat_svgs)
 # PCA of mouse data
 ```{r}
 # HVG PCA
-hvg_pca <- prcomp(as.matrix(mouse_hvg_matrix), center = TRUE, scale. = TRUE)
-hvg_pca_embeds <- as.data.frame(hvg_pca$x)
+mouse_hvg_pca <- prcomp(as.matrix(mouse_hvg_matrix), center = TRUE, scale. = TRUE)
+mouse_hvg_pca_embeds <- as.data.frame(hvg_pca$x)
 
 # plot 2 PCs
-ggplot(hvg_pca_embeds, aes(x = PC1, y = PC2)) +
+ggplot(mouse_hvg_pca_embeds, aes(x = PC1, y = PC2)) +
   geom_point(alpha = 0.5) +
   ggtitle("Mouse HVG PCA Embeddings") +
   theme_minimal()
@@ -211,21 +211,24 @@ ggplot(human_seurat_svg_umap_embeds, aes(x = V1, y = V2 )) +
 
 # save all embeddings
 ```{r save-embeddings}
-# PCA
+#human
 saveRDS(human_hvg_pca_embeds, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/baseline_embeds/human_hvg_pca_embeddings.rds")
 saveRDS(human_nnSVG_pca_embeds, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/baseline_embeds/human_nnSVG_pca_embeddings.rds")
 saveRDS(human_seurat_svg_pca_embeds, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/baseline_embeds/human_seurat_svg_pca_embeddings.rds")
 
-saveRDS(hvg_umap_embeds, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/baseline_embeds/human_hvg_umap_embeddings.rds")
-saveRDS(nnSVG_umap_embeds, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/baseline_embeds/human_nnSVG_umap_embeddings.rds")
-saveRDS(seurat_svg_umap_embeds, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/baseline_embeds/human_seurat_svg_umap_embeddings.rds")
+saveRDS(human_hvg_umap_embeds, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/baseline_embeds/human_hvg_umap_embeddings.rds")
+saveRDS(human_nnSVG_umap_embeds, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/baseline_embeds/human_nnSVG_umap_embeddings.rds")
+saveRDS(human_seurat_svg_umap_embeds, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/baseline_embeds/human_seurat_svg_umap_embeddings.rds")
+```
 
-saveRDS(hvg_pca_embeds, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/baseline_embeds/mouse_hvg_pca_embeddings.rds")
-saveRDS(nnSVG_pca_embeds, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/baseline_embeds/mouse_nnSVG_pca_embeddings.rds")
-saveRDS(seurat_svg_pca_embeds, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/baseline_embeds/mouse_seurat_svg_pca_embeddings.rds")
+```{r}
+#mouse
+saveRDS(mouse_hvg_pca_embeds, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/baseline_embeds/mouse_hvg_pca_embeddings.rds")
+saveRDS(mouse_nnSVG_pca_embeds, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/baseline_embeds/mouse_nnSVG_pca_embeddings.rds")
+saveRDS(mouse_seurat_svg_pca_embeds, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/baseline_embeds/mouse_seurat_svg_pca_embeddings.rds")
 
-saveRDS(hvg_umap_embeds, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/baseline_embeds/mouse_hvg_umap_embeddings.rds")
-saveRDS(nnSVG_umap_embeds, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/baseline_embeds/mouse_nnSVG_umap_embeddings.rds")
-saveRDS(seurat_svg_umap_embeds, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/baseline_embeds/mouse_seurat_svg_umap_embeddings.rds")
+saveRDS(mouse_hvg_umap_embeds, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/baseline_embeds/mouse_hvg_umap_embeddings.rds")
+saveRDS(mouse_nnSVG_umap_embeds, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/baseline_embeds/mouse_nnSVG_umap_embeddings.rds")
+saveRDS(mouse_seurat_svg_umap_embeds, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/baseline_embeds/mouse_seurat_svg_umap_embeddings.rds")
 ```
   
