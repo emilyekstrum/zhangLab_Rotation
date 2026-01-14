@@ -162,6 +162,7 @@ nrow(svg_lr_present)
 head(svg_lr_present)
 ```
 
+
 ```{r}
 # find differences in interaction names between hvgs and svgs
 hvg_interactions <- hvg_lr_present$interaction_name
@@ -170,3 +171,9 @@ length(intersect(hvg_interactions, svg_interactions)) / length(union(hvg_interac
 ```
 
 The LR interactions are similar for the mouse dataset.
+
+```{r}
+# save lr present tables
+saveRDS(hvg_lr_present, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/mouse_hvg_lr_present.rds")
+saveRDS(svg_lr_present, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/mouse_svg_lr_present.rds")
+```
