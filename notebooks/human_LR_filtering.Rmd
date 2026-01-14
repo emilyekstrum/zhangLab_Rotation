@@ -172,3 +172,9 @@ length(intersect(hvg_interactions, svg_interactions)) / length(union(hvg_interac
 ```
 
 The LR interactions are not the same between SVGs and HVGs for the human dataset.
+
+```{r}
+# save lr present tables
+saveRDS(hvg_lr_present, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/human_hvg_lr_present.rds")
+saveRDS(svg_lr_present, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/human_svg_lr_present.rds")
+```
