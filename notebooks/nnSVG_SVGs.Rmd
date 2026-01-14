@@ -149,6 +149,18 @@ head(rownames(mouse_svg_matrix), 20)
 saveRDS(mouse_svg_matrix, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/nnSVG_mouse_svg_gene_cell_matrix.rds")
 ```
 
+# or store SVGs in a cell by gene matrix
+```{r}
+mouse_svg_matrix <- t(mouse_svg_matrix)
+mouse_svg_matrix[1:5, 1:5]
+head(colnames(mouse_svg_matrix), 20)
+```
+
+# save mouse SVG matrix
+```{r save-mouse-svg-matrix}
+saveRDS(mouse_svg_matrix, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/nnSVG_mouse_svg_cell_gene_matrix.rds")
+```
+
 ```{r}
 # volcano plot: rank vs -log10(padj)
 ggplot(mouse_res, aes(x = rank, y = neglog10_padj)) +
@@ -394,6 +406,18 @@ head(rownames(human_svg_matrix), 20)
 # save mouse SVG matrix
 ```{r save-human-svg-matrix}
 saveRDS(human_svg_matrix, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/nnSVG_human_svg_gene_cell_matrix.rds")
+```
+
+# or store SVGs in a cell by gene matrix
+```{r}
+human_svg_matrix <- t(human_svg_matrix)
+human_svg_matrix[1:5, 1:5]
+head(colnames(human_svg_matrix), 20)
+```
+
+# save mouse SVG matrix
+```{r save-human-svg-matrix}
+saveRDS(human_svg_matrix, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/nnSVG_human_svg_cell_gene_matrix.rds")
 ```
 
 ```{r}
