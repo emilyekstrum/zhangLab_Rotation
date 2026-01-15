@@ -7,11 +7,11 @@ output: html_document
 params:
   
   # cell chat input must be gene by cell matrices
-  human_hvg: "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/human_hvg_gene_cell_matrix.rds"
+  human_hvg: "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/hvgs/human_hvg_gene_cell_matrix.rds"
       
-  human_nnsvg:  "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/nnSVG_human_svg_gene_cell_matrix.rds"
+  human_nnsvg:  "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/svgs/nnSVG_human_svg_gene_cell_matrix.rds"
       
-  human_seurat_svg:  "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/seurat_human_svg_gene_cell_matrix.rds"
+  human_seurat_svg:  "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/svgs/seurat_human_svg_gene_cell_matrix.rds"
 
     
   seed: 123
@@ -175,6 +175,6 @@ The LR interactions are not the same between SVGs and HVGs for the human dataset
 
 ```{r}
 # save lr present tables
-saveRDS(hvg_lr_present, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/human_hvg_lr_present.rds")
-saveRDS(svg_lr_present, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/human_svg_lr_present.rds")
+saveRDS(hvg_lr_present, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/LR_filtering/human_hvg_lr_present.rds")
+saveRDS(svg_lr_present, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/LR_filtering/human_svg_lr_present.rds")
 ```
