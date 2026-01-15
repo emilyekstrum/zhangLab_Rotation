@@ -177,3 +177,33 @@ The LR interactions are similar for the mouse dataset.
 saveRDS(hvg_lr_present, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/LR_filtering/mouse_hvg_lr_present.rds")
 saveRDS(svg_lr_present, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/LR_filtering/mouse_svg_lr_present.rds")
 ```
+
+
+# gene by cell matrices for filtered LR pairs
+```{r}
+# make gene by cell matrices for filtered LR pairs
+mouse_hvg_lr_genes <- unique(c( unlist(strsplit(hvg_lr_present$ligand, "\\|")),
+                              unlist(strsplit(hvg_lr_present$receptor, "\\|"))))
+mouse_hvg_lr_gene_cell_matrix <- mouse_hvg[mouse_hvg_lr_genes, ]
+mouse_nnsvg_lr_genes <- unique(c( unlist(strsplit(svg_lr_present$ligand, "\\|")),
+                              unlist(strsplit(svg_lr_present$receptor, "\\|"))))
+mouse_nnsvg_lr_gene_cell_matrix <- mouse_nnsvg[mouse_nnsvg_lr_genes, ]
+```
+
+```{r}
+# check matrices
+head(mouse_hvg_lr_gene_cell_matrix[1:3,])
+head(mouse_nnsvg_lr_gene_cell_matrix[1:3,])
+```
+
+```{r}
+# get matrix dimensions (genes by cells)
+dim(mouse_hvg_lr_gene_cell_matrix)
+dim(mouse_nnsvg_lr_gene_cell_matrix)
+```
+
+```{r}
+# save matrices as csvs
+write.csv(mouse_hvg_lr_gene_cell_matrix, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/LR_filtering/mouse_hvg_lr_gene_cell_matrix.csv")
+write.csv(mouse_nnsvg_lr_gene_cell_matrix, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/LR_filtering/mouse_nnsvg_lr_gene_cell_matrix.csv")
+```
