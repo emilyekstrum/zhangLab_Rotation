@@ -5,14 +5,14 @@ date: '`r Sys.Date()`'
 output: html_document
 
 params:
-  mouse_seurat_SVG_path: "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/seurat_mouse_svg_table.rds"
-  mouse_nnSVG_SVG_path: "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/nnSVG_mouse_results.rds"
+  mouse_seurat_SVG_path: "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/svgs/seurat_mouse_svg_table.rds"
+  mouse_nnSVG_SVG_path: "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/svgs/nnSVG_mouse_results.rds"
   
-  human_seurat_SVG_path: "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/seurat_human_svg_table.rds"
-  human_nnSVG_SVG_path: "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/nnSVG_human_results.rds"
+  human_seurat_SVG_path: "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/svgs/seurat_human_svg_table.rds"
+  human_nnSVG_SVG_path: "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/svgs/nnSVG_human_results.rds"
   
-  mouse_HVG_path: "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/mouse_hvg_matrix.rds"
-  human_HVG_path: "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/human_hvg_matrix.rds"
+  mouse_HVG_path: "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/hvgs/mouse_hvg_gene_cell_matrix.rds"
+  human_HVG_path: "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/hvgs/human_hvg_gene_cell_matrix.rds"
   
   seed: 123
 ---
