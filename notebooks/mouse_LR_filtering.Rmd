@@ -7,9 +7,9 @@ output: html_document
 params:
   
   # cell chat input must be gene by cell matrices
-  mouse_hvg: "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/mouse_hvg_gene_cell_matrix.rds"
-  mouse_nnsvg:  "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/nnSVG_mouse_svg_gene_cell_matrix.rds"
-  mouse_seurat_svg:  "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/seurat_mouse_svg_gene_cell_matrix.rds"
+  mouse_hvg: "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/hvgs/mouse_hvg_gene_cell_matrix.rds"
+  mouse_nnsvg:  "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/svgs/nnSVG_mouse_svg_gene_cell_matrix.rds"
+  mouse_seurat_svg:  "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/svgs/seurat_mouse_svg_gene_cell_matrix.rds"
 
     
   seed: 123
@@ -174,6 +174,6 @@ The LR interactions are similar for the mouse dataset.
 
 ```{r}
 # save lr present tables
-saveRDS(hvg_lr_present, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/mouse_hvg_lr_present.rds")
-saveRDS(svg_lr_present, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/mouse_svg_lr_present.rds")
+saveRDS(hvg_lr_present, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/LR_filtering/mouse_hvg_lr_present.rds")
+saveRDS(svg_lr_present, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/LR_filtering/mouse_svg_lr_present.rds")
 ```
