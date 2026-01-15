@@ -133,8 +133,12 @@ head(mouse_res[, c("gene","LR_stat","pval","padj","rank")])
 ```
 
 ```{r}
+# sort by rank column
+mouse_res <- mouse_res[order(mouse_res$rank), ]
+head(mouse_res)
+
 # save res data frame
-saveRDS(mouse_res, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/nnSVG_mouse_results.rds")
+saveRDS(mouse_res, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/svgs/nnSVG_mouse_results.rds")
 ```
 
 # store SVGs in a gene by cell matrix
@@ -146,10 +150,7 @@ head(rownames(mouse_svg_matrix), 20)
 
 # save mouse SVG matrix
 ```{r save-svg-matrix}
-# sort by rank column
-mouse_res <- mouse_res[order(mouse_res$rank), ]
-
-saveRDS(mouse_svg_matrix, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/nnSVG_mouse_svg_gene_cell_matrix.rds")
+saveRDS(mouse_svg_matrix, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/svgs/nnSVG_mouse_svg_gene_cell_matrix.rds")
 ```
 
 # or store SVGs in a cell by gene matrix
@@ -161,7 +162,7 @@ head(colnames(mouse_svg_matrix), 20)
 
 # save mouse SVG matrix
 ```{r save-mouse-svg-matrix}
-saveRDS(mouse_svg_matrix, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/nnSVG_mouse_svg_cell_gene_matrix.rds")
+saveRDS(mouse_svg_matrix, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/svgs/nnSVG_mouse_svg_cell_gene_matrix.rds")
 ```
 
 ```{r}
@@ -396,10 +397,11 @@ head(human_res[, c("gene","LR_stat","pval","padj","rank")])
 
 ```{r}
 # sort by rank column
-human_res <- human_res[order(human_res$rank), ]
+human_res <- arrange(human_res, rank)
+head(human_res)
 
 # save res data frame
-saveRDS(human_res, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/nnSVG_human_results.rds")
+saveRDS(human_res, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/svgs/nnSVG_human_results.rds")
 ```
 
 # store SVGs in a gene by cell matrix
@@ -411,7 +413,7 @@ head(rownames(human_svg_matrix), 20)
 
 # save mouse SVG matrix
 ```{r save-human-svg-matrix}
-saveRDS(human_svg_matrix, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/nnSVG_human_svg_gene_cell_matrix.rds")
+saveRDS(human_svg_matrix, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/svgs/nnSVG_human_svg_gene_cell_matrix.rds")
 ```
 
 # or store SVGs in a cell by gene matrix
@@ -423,7 +425,7 @@ head(colnames(human_svg_matrix), 20)
 
 # save mouse SVG matrix
 ```{r save-human-svg-matrix}
-saveRDS(human_svg_matrix, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/nnSVG_human_svg_cell_gene_matrix.rds")
+saveRDS(human_svg_matrix, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/svgs/nnSVG_human_svg_cell_gene_matrix.rds")
 ```
 
 ```{r}

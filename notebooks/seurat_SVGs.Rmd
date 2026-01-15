@@ -136,7 +136,7 @@ length(rownames(svg_df))
 # save mouse SVG table
 svg_df <- as.data.frame(svg_df)
 svg_df$gene <- rownames(svg_df)
-saveRDS(svg_df, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/seurat_mouse_svg_table.rds")
+saveRDS(svg_df, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/svgs/seurat_mouse_svg_table.rds")
 ```
 
 ```{r}
@@ -153,7 +153,7 @@ head(rownames(mouse_svg_matrix), 20)
 
 # save mouse SVG matrix
 ```{r save-mouse-svg-matrix}
-saveRDS(mouse_svg_matrix, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/seurat_mouse_svg_gene_cell_matrix.rds")
+saveRDS(mouse_svg_matrix, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/svgs/seurat_mouse_svg_gene_cell_matrix.rds")
 ```
 
 # or store SVGs in a cell by gene matrix
@@ -165,7 +165,7 @@ head(colnames(mouse_svg_matrix), 20)
 
 # save mouse SVG matrix
 ```{r save-human-svg-matrix}
-saveRDS(mouse_svg_matrix, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/seurat_mouse_svg_cell_gene_matrix.rds")
+saveRDS(mouse_svg_matrix, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/svgs/seurat_mouse_svg_cell_gene_matrix.rds")
 ```
 
 # eda of top SVGs
@@ -359,7 +359,7 @@ length(rownames(svg_df))
 # save human SVG table
 svg_df <- as.data.frame(svg_df)
 svg_df$gene <- rownames(svg_df)
-saveRDS(svg_df, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/seurat_human_svg_table.rds")
+saveRDS(svg_df, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/svgs/seurat_human_svg_table.rds")
 ```
 
 # store SVGs in a gene by cell matrix
@@ -370,7 +370,7 @@ head(rownames(human_svg_matrix), 20)
 ```
 # save human SVG matrix
 ```{r save-human-svg-matrix}
-saveRDS(human_svg_matrix, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/seurat_human_svg_gene_cell_matrix.rds")
+saveRDS(human_svg_matrix, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/svgs/seurat_human_svg_gene_cell_matrix.rds")
 ```
 
 # or store SVGs in a cell by gene matrix
@@ -382,7 +382,7 @@ head(colnames(human_svg_matrix), 20)
 
 # save mouse SVG matrix
 ```{r save-human-svg-matrix}
-saveRDS(human_svg_matrix, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/seurat_human_svg_cell_gene_matrix.rds")
+saveRDS(human_svg_matrix, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/svgs/seurat_human_svg_cell_gene_matrix.rds")
 ```
 
 # eda of top SVGs

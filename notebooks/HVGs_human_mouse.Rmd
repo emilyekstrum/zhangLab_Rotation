@@ -146,7 +146,7 @@ head(rownames(mouse_hvg_matrix), 20)
 
 # save mouse HVG matrix
 ```{r save-mouse-hvg-matrix}
-saveRDS(mouse_hvg_matrix, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/mouse_hvg_gene_cell_matrix.rds")
+saveRDS(mouse_hvg_matrix, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/hvgs/mouse_hvg_gene_cell_matrix.rds")
 ```
 
 # or store as mouse HVG cell by gene matrix
@@ -159,7 +159,7 @@ head(mouse_hvg_matrix_gene_by_cell[, 1:20])
 
 # save mouse HVG cell by gene matrix
 ```{r save-mouse-hvg-matrix-gene-by-cell}
-saveRDS(mouse_hvg_matrix_gene_by_cell, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/mouse_hvg_cell_gene_matrix.rds")
+saveRDS(mouse_hvg_matrix_gene_by_cell, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/hvgs/mouse_hvg_cell_gene_matrix.rds")
 ```
 
 
@@ -253,7 +253,7 @@ head(rownames(human_hvg_matrix), 20)
 
 # save human gene by cell HVG matrix
 ```{r save-hvg-matrix}
-saveRDS(human_hvg_matrix, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/human_hvg_gene_cell_matrix.rds")
+saveRDS(human_hvg_matrix, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/hvgs/human_hvg_gene_cell_matrix.rds")
 ```
 
 # or store as mouse HVG cell by gene matrix
@@ -266,6 +266,6 @@ head(human_hvg_matrix_cell_by_gene[, 1:20])
 
 # save mouse HVG gene by cell matrix
 ```{r}
-saveRDS(human_hvg_matrix_cell_by_gene, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/human_hvg_cell_gene_matrix.rds")
+saveRDS(human_hvg_matrix_cell_by_gene, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/hvgs/human_hvg_cell_gene_matrix.rds")
 ```
 
