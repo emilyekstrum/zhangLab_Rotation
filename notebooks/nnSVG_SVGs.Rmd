@@ -5,8 +5,8 @@ date: "`r Sys.Date()`"
 output: html_document
 
 params:
-  mouse_rds_path: "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/mousebrain_seurat.rds"
-  human_rds_path: "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/humanbrain_seurat.rds"
+  mouse_rds_path: "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/seurat_objs/mousebrain_seurat.rds"
+  human_rds_path: "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/seurat_objs/humanbrain_seurat.rds"
   seed: 123
 
 ---
@@ -145,7 +145,10 @@ head(rownames(mouse_svg_matrix), 20)
 ```
 
 # save mouse SVG matrix
-```{r save-human-svg-matrix}
+```{r save-svg-matrix}
+# sort by rank column
+mouse_res <- mouse_res[order(mouse_res$rank), ]
+
 saveRDS(mouse_svg_matrix, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/nnSVG_mouse_svg_gene_cell_matrix.rds")
 ```
 
@@ -392,6 +395,9 @@ head(human_res[, c("gene","LR_stat","pval","padj","rank")])
 ```
 
 ```{r}
+# sort by rank column
+human_res <- human_res[order(human_res$rank), ]
+
 # save res data frame
 saveRDS(human_res, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/nnSVG_human_results.rds")
 ```
