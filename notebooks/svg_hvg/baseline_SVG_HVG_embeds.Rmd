@@ -1,0 +1,244 @@
+---
+title: "baseline_SVG_HVG_embeds.Rmd"
+author: "Emily Ekstrum"
+date: "`r Sys.Date()`"
+output: html_document
+
+params:
+  
+  # cell by gene matrices
+  human_hvgs: "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/hvgs/human_hvg_cell_gene_matrix.rds"
+  mouse_hvgs: "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/hvgs/mouse_hvg_cell_gene_matrix.rds"
+  
+  human_nnSVGs: "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/svgs/nnSVG_human_svg_cell_gene_matrix.rds"
+  mouse_nnSVGs: "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/svgs/nnSVG_mouse_svg_cell_gene_matrix.rds"
+  
+  human_seurat_svgs: "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/svgs/seurat_human_svg_cell_gene_matrix.rds"
+  mouse_seurat_svgs: "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/svgs/seurat_mouse_svg_cell_gene_matrix.rds"
+    
+  seed: 123
+---
+
+# file setup
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,
+  fig.width = 8,
+  fig.height = 5
+)
+set.seed(params$seed)
+```
+
+# Generate PCA and UMAP baseline embeddings for SVGs and HVGs pre-LR filtering
+
+# load in packages
+
+```{r packages}
+pkgs <- c(
+  "Seurat",
+  "Matrix",
+  "ggplot2",
+  "dplyr",
+  "tibble",
+  "patchwork",
+  "umap"
+)
+
+to_install <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
+if (length(to_install) > 0) {
+  install.packages(to_install, repos = "https://cloud.r-project.org")
+}
+
+# Load
+lapply(pkgs, library, character.only = TRUE)
+```
+
+#---------------- mouse data ------------------- #
+```{r}
+# load in mouse data
+mouse_hvg_matrix <- readRDS(params$mouse_hvgs)
+mouse_nnSVG_matrix <- readRDS(params$mouse_nnSVGs)
+mouse_seurat_svg_matrix <- readRDS(params$mouse_seurat_svgs)
+```
+
+# PCA of mouse data
+```{r}
+# HVG PCA
+mouse_hvg_pca <- prcomp(as.matrix(mouse_hvg_matrix), center = TRUE, scale. = TRUE)
+mouse_hvg_pca_embeds <- as.data.frame(mouse_hvg_pca$x)
+
+# plot 2 PCs
+ggplot(mouse_hvg_pca_embeds, aes(x = PC1, y = PC2)) +
+  geom_point(alpha = 0.5) +
+  ggtitle("Mouse HVG PCA Embeddings") +
+  theme_minimal()
+```
+
+```{r}
+# nnSVG PCA
+mouse_nnSVG_pca <- prcomp(as.matrix(mouse_nnSVG_matrix), center = TRUE, scale = TRUE)
+mouse_nnSVG_pca_embeds <- as.data.frame(mouse_nnSVG_pca$x)
+# plot 2 PCs
+ggplot(mouse_nnSVG_pca_embeds, aes(x = PC1, y = PC2 )) +
+  geom_point(alpha = 0.5) +
+  ggtitle("Mouse nnSVG PCA Embeddings") +
+  theme_minimal()
+```
+
+```{r}
+# Seurat SVG PCA
+mouse_seurat_svg_pca <- prcomp(as.matrix(mouse_seurat_svg_matrix), center = TRUE, scale = TRUE) 
+mouse_seurat_svg_pca_embeds <- as.data.frame(mouse_seurat_svg_pca$x)
+# plot 2 PCs
+ggplot(mouse_seurat_svg_pca_embeds, aes(x = PC1, y = PC2 )) +
+  geom_point(alpha = 0.5) +
+  ggtitle("Mouse Seurat SVG PCA Embeddings") +
+  theme_minimal()
+```
+
+PCA plots of HVGs, seurat SVGs, and nnSVG SVGs look similar. 
+
+```{r}
+# UMAP of mouse data
+# HVG UMAP
+mouse_hvg_umap <- umap(as.matrix(mouse_hvg_matrix))
+mouse_hvg_umap_embeds <- as.data.frame(mouse_hvg_umap$layout)
+# plot UMAP
+ggplot(mouse_hvg_umap_embeds, aes(x = V1, y = V2 )) +
+  geom_point(alpha = 0.5) +
+  ggtitle("Mouse HVG UMAP Embeddings") +
+  theme_minimal()
+```
+
+
+```{r}
+# nnSVG UMAP
+mouse_nnSVG_umap <- umap(as.matrix(mouse_nnSVG_matrix))
+mouse_nnSVG_umap_embeds <- as.data.frame(mouse_nnSVG_umap$layout)
+# plot UMAP
+ggplot(mouse_nnSVG_umap_embeds, aes(x = V1, y = V2)) +
+  geom_point(alpha = 0.5) +
+  ggtitle("Mouse nnSVG UMAP Embeddings") +
+  theme_minimal()
+```
+
+```{r}
+# Seurat SVG UMAP
+mouse_seurat_svg_umap <- umap(as.matrix(mouse_seurat_svg_matrix))
+mouse_seurat_svg_umap_embeds <- as.data.frame(mouse_seurat_svg_umap$layout)
+# plot UMAP
+ggplot(mouse_seurat_svg_umap_embeds, aes(x = V1, y = V2)) +
+  geom_point(alpha = 0.5) +
+  ggtitle("Mouse Seurat SVG UMAP Embeddings") +
+  theme_minimal()
+```
+
+UMAP embeddings do not look similar.
+
+
+#---------------- human data ------------------- #
+```{r}
+# load in human data
+human_hvg_matrix <- readRDS(params$human_hvgs)
+human_nnSVG_matrix <- readRDS(params$human_nnSVGs)
+human_seurat_svg_matrix <- readRDS(params$human_seurat_svgs)
+```
+
+# PCA of human data
+```{r}
+# HVG PCA
+human_hvg_pca <- prcomp(as.matrix(human_hvg_matrix), center = TRUE, scale. = TRUE)
+human_hvg_pca_embeds <- as.data.frame(human_hvg_pca$x)
+# plot 2 PCs
+ggplot(human_hvg_pca_embeds, aes(x = PC1, y = PC2 )) +
+  geom_point(alpha = 0.5) +
+  ggtitle("Human HVG PCA Embeddings") +
+  theme_minimal()
+```
+
+```{r}
+# nnSVG PCA
+human_nnSVG_pca <- prcomp(as.matrix(human_nnSVG_matrix), center = TRUE, scale = TRUE)
+human_nnSVG_pca_embeds <- as.data.frame(human_nnSVG_pca$x)
+# plot 2 PCs
+ggplot(human_nnSVG_pca_embeds, aes(x = PC1, y = PC2 )) +
+  geom_point(alpha = 0.5) +
+  ggtitle("Human nnSVG PCA Embeddings") +
+  theme_minimal()
+```
+
+```{r}
+# Seurat SVG PCA
+human_seurat_svg_pca <- prcomp(as.matrix(human_seurat_svg_matrix), center = TRUE, scale = TRUE) 
+human_seurat_svg_pca_embeds <- as.data.frame(human_seurat_svg_pca$x)
+# plot 2 PCs
+ggplot(human_seurat_svg_pca_embeds, aes(x = PC1, y = PC2 )) +
+  geom_point(alpha = 0.5) +
+  ggtitle("Human Seurat SVG PCA Embeddings") +
+  theme_minimal()
+```
+
+PCA embeddings look similar and have similar morphology to mouse PCA embeddings. With exception of nnSVG PCA embedding plot looks interverted compared to the others.
+
+```{r}
+# UMAP of human data
+# HVG UMAP
+human_hvg_umap <- umap(as.matrix(human_hvg_matrix))
+human_hvg_umap_embeds <- as.data.frame(human_hvg_umap$layout)
+# plot UMAP
+ggplot(human_hvg_umap_embeds, aes(x = V1, y = V2 )) +
+  geom_point(alpha = 0.5) +
+  ggtitle("Human HVG UMAP Embeddings") +
+  theme_minimal()
+```
+
+```{r}
+# nnSVG UMAP
+human_nnSVG_umap <- umap(as.matrix(human_nnSVG_matrix))
+human_nnSVG_umap_embeds <- as.data.frame(human_nnSVG_umap$layout)
+# plot UMAP
+ggplot(human_nnSVG_umap_embeds, aes(x = V1, y = V2 )) +
+  geom_point(alpha = 0.5) +
+  ggtitle("Human nnSVG UMAP Embeddings") +
+  theme_minimal()
+``` 
+
+```{r}
+# Seurat SVG UMAP
+human_seurat_svg_umap <- umap(as.matrix(human_seurat_svg_matrix))
+human_seurat_svg_umap_embeds <- as.data.frame(human_seurat_svg_umap$layout)
+# plot UMAP
+ggplot(human_seurat_svg_umap_embeds, aes(x = V1, y = V2 )) +
+  geom_point(alpha = 0.5) +
+  ggtitle("Human Seurat SVG UMAP Embeddings") +
+  theme_minimal()
+```
+
+Human UMAP embeddings 
+
+
+# save all embeddings
+```{r}
+#human
+saveRDS(human_hvg_pca_embeds, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/baseline_embeds/human_hvg_pca_embeddings.rds")
+saveRDS(human_nnSVG_pca_embeds, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/baseline_embeds/human_nnSVG_pca_embeddings.rds")
+saveRDS(human_seurat_svg_pca_embeds, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/baseline_embeds/human_seurat_svg_pca_embeddings.rds")
+
+saveRDS(human_hvg_umap_embeds, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/baseline_embeds/human_hvg_umap_embeddings.rds")
+saveRDS(human_nnSVG_umap_embeds, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/baseline_embeds/human_nnSVG_umap_embeddings.rds")
+saveRDS(human_seurat_svg_umap_embeds, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/baseline_embeds/human_seurat_svg_umap_embeddings.rds")
+```
+
+```{r}
+#mouse
+saveRDS(mouse_hvg_pca_embeds, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/baseline_embeds/mouse_hvg_pca_embeddings.rds")
+saveRDS(mouse_nnSVG_pca_embeds, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/baseline_embeds/mouse_nnSVG_pca_embeddings.rds")
+saveRDS(mouse_seurat_svg_pca_embeds, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/baseline_embeds/mouse_seurat_svg_pca_embeddings.rds")
+
+saveRDS(mouse_hvg_umap_embeds, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/baseline_embeds/mouse_hvg_umap_embeddings.rds")
+saveRDS(mouse_nnSVG_umap_embeds, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/baseline_embeds/mouse_nnSVG_umap_embeddings.rds")
+saveRDS(mouse_seurat_svg_umap_embeds, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/baseline_embeds/mouse_seurat_svg_umap_embeddings.rds")
+```
+  

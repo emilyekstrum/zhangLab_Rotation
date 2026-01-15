@@ -8,6 +8,19 @@ Simulation data:
 Run PCA:
 Run DCA:
 
+
+```{r}
+install.packages("Seurat")
+install.packages("devtools")
+install.packages("ggplot2")
+install.packages("Matrix")
+```
+
+```{r}
+devtools::install_github("xzhoulab/SRTsim")
+```
+
+
 ## SRTsim
 ```{r}
 library(Seurat)

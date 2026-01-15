@@ -1,0 +1,352 @@
+---
+title: "compare_SVGs"
+author: "Emily Ekstrum"
+date: "`r Sys.Date()`"
+output: html_document
+
+params:
+  mouse_seurat_SVG_path: "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/svgs/seurat_mouse_svg_table.rds"
+  mouse_nnSVG_SVG_path: "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/svgs/nnSVG_mouse_results.rds"
+  
+  human_seurat_SVG_path: "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/svgs/seurat_human_svg_table.rds"
+  human_nnSVG_SVG_path: "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/svgs/nnSVG_human_results.rds"
+  seed: 123
+---
+
+# file setup
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,
+  fig.width = 8,
+  fig.height = 5
+)
+set.seed(params$seed)
+```
+
+
+# Comapre SVGs identified using FindSpatiallyVariableGenes() (seurat) vs nnSVG() 
+
+# load in packages
+
+```{r packages}
+pkgs <- c(
+  "Seurat",
+  "Matrix",
+  "ggplot2",
+  "dplyr",
+  "tibble",
+  "patchwork",
+  "Rfast2",
+  "STew",
+  "BiocManager"
+)
+
+to_install <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
+if (length(to_install) > 0) {
+  install.packages(to_install, repos = "https://cloud.r-project.org")
+}
+
+# Load
+lapply(pkgs, library, character.only = TRUE)
+```
+
+# --------------- mouse data ----------------- #
+
+# load in mouse data
+```{r}
+mouse_svg_seurat <- readRDS(params$mouse_seurat_SVG_path)
+mouse_svg_nnSVG <- readRDS(params$mouse_nnSVG_SVG_path)
+```
+
+# inspect data frames
+```{r}
+class(readRDS(params$mouse_nnSVG_SVG_path)) #data.frame
+dim(mouse_svg_seurat) # 10,000 genes x 3
+head(rownames(mouse_svg_nnSVG)) # genes
+head(colnames(mouse_svg_nnSVG), length(colnames(mouse_svg_nnSVG))) # stats
+
+class(readRDS(params$mouse_seurat_SVG_path)) #data.frame
+dim(mouse_svg_seurat) # 10,000 genes x 3
+head(rownames(mouse_svg_seurat)) # genes
+head(colnames(mouse_svg_seurat), length(colnames(mouse_svg_seurat))) # stats
+```
+
+
+
+# compare top 1000 SVGs overlap
+```{r}
+top_n <- 1000
+mouse_seurat_genes <- rownames(mouse_svg_seurat)[1:top_n]
+mouse_nnSVG_genes <- rownames(mouse_svg_nnSVG)[1:top_n]
+mouse_common_genes <- intersect(mouse_seurat_genes, mouse_nnSVG_genes)
+length(mouse_common_genes) # 542 common genes
+```
+
+# gene overlap by significance
+```{r}
+# nnSVG results
+nn_df <- as.data.frame(readRDS(params$mouse_nnSVG_SVG_path))
+nn_df$gene <- rownames(nn_df)
+
+# Seurat SVG results
+seu_df <- as.data.frame(readRDS(params$mouse_seurat_SVG_path))
+seu_df$gene <- rownames(seu_df)
+
+# nnSVG p-values
+nn_pcol <- if ("padj" %in% names(nn_df)) "padj" else "pval"
+
+# Seurat p-values
+seu_pcol <- "p.value"
+
+# rank by significance
+nn_ranked <- nn_df[order(nn_df[[nn_pcol]]), c("gene", nn_pcol)]
+seu_ranked <- seu_df[order(seu_df[[seu_pcol]]), c("gene", seu_pcol)]
+
+topN <- 500
+
+nn_top  <- nn_ranked$gene[1:topN]
+seu_top <- seu_ranked$gene[1:topN]
+
+# overlap size
+length(intersect(nn_top, seu_top))
+
+# overlapping genes
+common_svg_genes <- intersect(nn_top, seu_top)
+head(common_svg_genes, 20) # 265 overlapping genes in top 500
+```
+
+# jaccard index
+```{r}
+jaccard <- length(common_svg_genes) / length(union(nn_top, seu_top))
+jaccard # 0.361 
+```
+
+Low similarity between the two methods in identifying top spatially variable genes in the mouse data as indicated by the Jaccard index of 0.1947. This suggests that nnSVG and Seurat FindSpatiallyVariableGenes() capture different aspects of spatial variability in gene expression.
+
+# correlation of shared genes
+```{r}
+shared <- intersect(nn_ranked$gene, seu_ranked$gene)
+
+nn_rank_vec  <- match(shared, nn_ranked$gene)
+seu_rank_vec <- match(shared, seu_ranked$gene)
+
+cor(nn_rank_vec, seu_rank_vec, method = "spearman", use = "complete.obs") # 0.731
+```
+
+There is moderate agreement in the ranking of shared genes between nnSVG and Seurat FindSpatiallyVariableGenes() in the mouse data, with a Spearman correlation.
+
+# look at gene disagreements
+```{r}
+# genes nnSVG called significant but Seurat did not
+setdiff(nn_top, seu_top)[1:20]
+```
+
+```{r}
+# genes Seurat called significant but nnSVG did not
+setdiff(seu_top, nn_top)[1:20]
+```
+
+nnSVG did not find as many blood related genes significant compared to Seurat in the mouse data.
+
+# ------------------- human data ------------------ #
+
+# load in human data
+```{r}
+human_svg_seurat <- readRDS(params$human_seurat_SVG_path)
+human_svg_nnSVG <- readRDS(params$human_nnSVG_SVG_path)
+```
+
+# inspect data frames
+```{r}
+class(readRDS(params$human_nnSVG_SVG_path)) #data.frame
+dim(human_svg_seurat) # 10,000 genes x 3
+head(rownames(human_svg_nnSVG)) # genes
+head(colnames(human_svg_nnSVG), length(colnames(human_svg_nnSVG))) # stats
+
+class(readRDS(params$human_seurat_SVG_path)) #data.frame
+dim(human_svg_seurat) # 10,000 genes x 3
+head(rownames(human_svg_seurat)) # genes
+head(colnames(human_svg_seurat), length(colnames(human_svg_seurat))) # stats
+```
+
+
+
+# compare top 1000 SVGs overlap
+```{r}
+top_n <- 1000
+human_seurat_genes <- rownames(human_svg_seurat)[1:top_n]
+human_nnSVG_genes <- rownames(human_svg_nnSVG)[1:top_n]
+human_common_genes <- intersect(human_seurat_genes, human_nnSVG_genes)
+length(human_common_genes) # 340 common genes
+```
+
+# gene overlap by significance
+```{r}
+# nnSVG results
+nn_df <- as.data.frame(readRDS(params$human_nnSVG_SVG_path))
+nn_df$gene <- rownames(nn_df)
+
+# Seurat SVG results
+seu_df <- as.data.frame(readRDS(params$human_seurat_SVG_path))
+seu_df$gene <- rownames(seu_df)
+
+# nnSVG p-values
+nn_pcol <- if ("padj" %in% names(nn_df)) "padj" else "pval"
+
+# Seurat p-values
+seu_pcol <- "p.value"
+
+# rank by significance
+nn_ranked <- nn_df[order(nn_df[[nn_pcol]]), c("gene", nn_pcol)]
+seu_ranked <- seu_df[order(seu_df[[seu_pcol]]), c("gene", seu_pcol)]
+
+topN <- 500
+
+nn_top  <- nn_ranked$gene[1:topN]
+seu_top <- seu_ranked$gene[1:topN]
+
+# overlap size
+length(intersect(nn_top, seu_top))
+
+# overlapping genes
+common_svg_genes <- intersect(nn_top, seu_top)
+head(common_svg_genes, 20) # 178 overlapping genes in top 500
+```
+
+# jaccard index
+```{r}
+jaccard <- length(common_svg_genes) / length(union(nn_top, seu_top))
+jaccard # 0.217
+```
+
+Low similarity between the two methods in identifying top spatially variable genes in the human data as indicated by the Jaccard index of 0.217. This agrees with the previous statement that nnSVG and Seurat FindSpatiallyVariableGenes() capture different aspects of spatial variability in gene expression.
+
+# correlation of shared genes
+```{r}
+shared <- intersect(nn_ranked$gene, seu_ranked$gene)
+
+nn_rank_vec  <- match(shared, nn_ranked$gene)
+seu_rank_vec <- match(shared, seu_ranked$gene)
+
+cor(nn_rank_vec, seu_rank_vec, method = "spearman", use = "complete.obs") # 0.572
+```
+
+Similar as above, there is moderate agreement in the ranking of shared genes between nnSVG and Seurat FindSpatiallyVariableGenes() in the human data, with a Spearman correlation.
+
+# look at gene disagreements
+```{r}
+# genes nnSVG called significant but Seurat did not
+setdiff(nn_top, seu_top)[1:20]
+```
+
+```{r}
+# genes Seurat called significant but nnSVG did not
+setdiff(seu_top, nn_top)[1:20]
+```
+
+
+# ---------------- rank-rank scatterplots (mouse + human) ---------------- #
+
+```{r rank-rank-mouse-human, message=FALSE, warning=FALSE}
+
+# build rank rank dataframe
+build_rankrank_df <- function(nn_path, seu_path,
+                              nn_pcol_candidates = c("padj", "pval", "p.value"),
+                              seu_pcol_candidates = c("p.value", "pval", "padj"),
+                              label = "dataset",
+                              topN_label = 200) {
+  nn_df  <- as.data.frame(readRDS(nn_path))
+  seu_df <- as.data.frame(readRDS(seu_path))
+
+  # make sure gene identifiers are present
+  if (!"gene" %in% names(nn_df))  nn_df$gene  <- rownames(nn_df)
+  if (!"gene" %in% names(seu_df)) seu_df$gene <- rownames(seu_df)
+
+  # get p-value columns 
+  nn_pcol  <- intersect(nn_pcol_candidates, names(nn_df))[1]
+  seu_pcol <- intersect(seu_pcol_candidates, names(seu_df))[1]
+
+  if (is.na(nn_pcol))  stop(paste("No nnSVG p-value column found in:", nn_path))
+  if (is.na(seu_pcol)) stop(paste("No Seurat p-value column found in:", seu_path))
+
+  # keep only the needed cols
+  nn_sub  <- nn_df[,  c("gene", nn_pcol),  drop = FALSE]
+  seu_sub <- seu_df[, c("gene", seu_pcol), drop = FALSE]
+  names(nn_sub)[2]  <- "p_nn"
+  names(seu_sub)[2] <- "p_seu"
+
+  # to numeric (handles weird column types)
+  nn_sub$p_nn  <- as.numeric(nn_sub$p_nn)
+  seu_sub$p_seu <- as.numeric(seu_sub$p_seu)
+
+  # remove missing / non-finite p-values
+  nn_sub  <- nn_sub[is.finite(nn_sub$p_nn), , drop = FALSE]
+  seu_sub <- seu_sub[is.finite(seu_sub$p_seu), , drop = FALSE]
+
+  # merge on common genes
+  m <- merge(nn_sub, seu_sub, by = "gene")
+
+  # rank by smallest p-value = rank 1 (strongest SVG evidence)
+  m$rank_nn  <- rank(m$p_nn,  ties.method = "average")
+  m$rank_seu <- rank(m$p_seu, ties.method = "average")
+
+  # mark top genes
+  m$top_any <- (m$rank_nn <= topN_label) | (m$rank_seu <= topN_label)
+  m$dataset <- label
+
+  m
+}
+
+# get mouse and human dataframes
+topN <- 200
+
+mouse_rr <- build_rankrank_df(
+  nn_path  = params$mouse_nnSVG_SVG_path,
+  seu_path = params$mouse_seurat_SVG_path,
+  label    = "Mouse",
+  topN_label = topN
+)
+
+human_rr <- build_rankrank_df(
+  nn_path  = params$human_nnSVG_SVG_path,
+  seu_path = params$human_seurat_SVG_path,
+  label    = "Human",
+  topN_label = topN
+)
+
+#plot
+rankrank_plot <- function(df, title) {
+  ggplot(df, aes(x = rank_nn, y = rank_seu)) +
+    geom_point(alpha = 0.35, size = 0.8) +
+    geom_point(data = df[df$top_any, , drop = FALSE],
+               alpha = 0.9, size = 1.1) +
+    scale_x_log10() +
+    scale_y_log10() +
+    xlim(1, 10000) +
+    ylim(1, 10000) +
+    #coord_cartesian(xlim = c(0, 10000), ylim = c(0, 10000)) +
+    labs(
+      title = title,
+      x = "nnSVG rank (smaller p = higher rank)",
+      y = "Seurat rank (smaller p = higher rank)"
+    ) +
+    theme_classic()
+}
+
+p_mouse <- rankrank_plot(mouse_rr, paste0("Mouse SVG rank–rank (top ", topN, ")"))
+p_human <- rankrank_plot(human_rr, paste0("Human SVG rank–rank (top ", topN, ")"))
+
+#show plots side by side
+p_mouse + p_human
+```
+
+The vertical lines at low nnSVG ranks indicate nnSVG found spatial structure that Seurat did not pick up on for those genes.
+The horizontal lines at low seurat ranks indicate Seurat found spatial structure that nnSVG did not pick up on for those genes.
+
+Lack of diagonal structure indicates disagreement between the two methods in ranking genes by spatial significance. 
+
+Larger "cloud" of points in the human plot indicate the two SVGs methods converge more in the human data than the mouse data.
+
+nnSVG captures global spatial patterns via Gaussian processes, while Seurat's method is based on local spatial autocorrelation (Moran's I). This difference likely contributes to the discrepancies observed in SVG rankings between the two methods.

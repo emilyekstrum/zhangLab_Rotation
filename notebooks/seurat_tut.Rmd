@@ -1,0 +1,357 @@
+Seurat for mouse and human brain data
+
+```{r}
+library(Seurat)
+library(SeuratData)
+library(ggplot2)
+library(patchwork)
+library(dplyr)
+library(tidyverse)
+```
+
+
+```{r}
+remotes::install_github("satijalab/seurat-data")
+
+```
+
+
+```{r}
+install.packages("Seurat")
+install.packages("SeuratData")
+SeuratData::InstallData("stxBrain")
+```    
+
+------------ example data --------------
+Data overview and visualization
+```{r}
+# load in exammple data
+InstallData("stxBrain")
+brain <- LoadData("stxBrain", type = "anterior1")
+
+head(brain)
+```
+
+```{r}
+plot1 <- VlnPlot(brain, features = "nCount_Spatial", pt.size = 0.1) + NoLegend()
+plot2 <- SpatialFeaturePlot(brain, features = "nCount_Spatial") + theme(legend.position = "right")
+wrap_plots(plot1, plot2)
+```
+
+```{r}
+brain <- SCTransform(brain, assay = "Spatial", verbose = FALSE)
+```
+
+```{r}
+SpatialFeaturePlot(brain, features = c("Hpca", "Ttr"))
+```
+
+
+```{r}
+brain <- RunPCA(brain, assay = "SCT", verbose = FALSE)
+brain <- FindNeighbors(brain, reduction = "pca", dims = 1:30)
+brain <- FindClusters(brain, verbose = FALSE)
+brain <- RunUMAP(brain, reduction = "pca", dims = 1:30)
+```
+
+```{r}
+p1 <- DimPlot(brain, reduction = "umap", label = TRUE)
+p2 <- SpatialDimPlot(brain, label = TRUE, label.size = 3)
+p1 + p2
+```
+
+```{r}
+SpatialDimPlot(brain, cells.highlight = CellsByIdentities(object = brain, idents = c(2, 1, 4, 3,
+    5, 8)), facet.highlight = TRUE, ncol = 3)
+```
+
+
+Identifying spatially variable features
+```{r}
+de_markers <- FindMarkers(brain, ident.1 = 5, ident.2 = 6)
+SpatialFeaturePlot(object = brain, features = rownames(de_markers)[1:3], alpha = c(0.1, 1), ncol = 3)
+```
+
+```{r}
+#install.packages("Rfast2")
+```
+
+
+or use 
+```{r}
+brain <- FindSpatiallyVariableFeatures(brain, assay = "SCT", features = VariableFeatures(brain)[1:1000],
+    method = "moransi")
+
+top.features <- head(SpatiallyVariableFeatures(brain, method = "moransi"), 6)
+SpatialFeaturePlot(brain, features = top.features, ncol = 3, alpha = c(0.1, 1))
+```
+
+```{r}
+# Subset to clusters of interest
+cortex <- subset(brain, idents = c(1, 2, 3, 4, 6, 7))
+
+# Extract and attach spatial coordinates from anterior1 image
+centroids <- cortex[["anterior1"]]@boundaries$centroids
+coords <- setNames(as.data.frame(centroids@coords), c("x", "y"))
+rownames(coords) <- centroids@cells
+cortex$x <- coords[colnames(cortex), "x"]
+cortex$y <- coords[colnames(cortex), "y"]
+
+# Perform spatial subsetting using image position Subset to upper right quadrant
+cortex <- subset(cortex, y < 2719 | x > 7835, invert = TRUE)
+
+# Further remove cells in lower right quadrant
+m <- (9395 - 5747)/(4960 - 7715)
+b <- 5747 - m * 7715
+cortex <- subset(cortex, y > m * x + b, invert = TRUE)
+```
+
+```{r}
+# Visualize the subsetted data on full image vs cropped image
+p1 <- SpatialDimPlot(cortex, crop = TRUE, label = TRUE)
+p2 <- SpatialDimPlot(cortex, crop = FALSE, label = TRUE, pt.size.factor = 1, label.size = 3)
+p1 + p2
+```
+
+
+
+
+------------- my data --------------
+
+Load in data
+```{r}
+# Load in mouse brain data
+mouse_data_raw <- readRDS("/Users/emilyekstrum/Desktop/zhangLab/data/MouseBrain_Data/10x_mousebrain_exp_count_meta.rds")
+head(mouse_data_raw)
+```
+
+```{r}
+# Process mouse brain data with better error checking
+# Extract spatial coordinates and expression data
+mouse_coords <- mouse_data_raw[, c("x", "y")]
+mouse_expression <- mouse_data_raw[, 3:ncol(mouse_data_raw)]
+
+# Check the data structure
+print(paste("Mouse coords dimensions:", dim(mouse_coords)[1], "x", dim(mouse_coords)[2]))
+print(paste("Mouse expression dimensions:", dim(mouse_expression)[1], "x", dim(mouse_expression)[2]))
+
+# Ensure expression data is numeric and handle any missing values
+mouse_expression <- as.matrix(mouse_expression)
+mouse_expression[is.na(mouse_expression)] <- 0
+
+# Convert to integers if needed (counts should be integers)
+if(any(mouse_expression != as.integer(mouse_expression), na.rm = TRUE)) {
+  mouse_expression <- round(mouse_expression)
+}
+mouse_expression <- as.integer(mouse_expression)
+dim(mouse_expression) <- dim(as.matrix(mouse_data_raw[, 3:ncol(mouse_data_raw)]))
+
+# Transpose expression matrix (genes should be rows, cells should be columns)
+mouse_expression_t <- t(mouse_expression)
+
+# Ensure count matrix has proper row and column names
+if(is.null(rownames(mouse_expression_t))) {
+  rownames(mouse_expression_t) <- paste0("Gene_", 1:nrow(mouse_expression_t))
+}
+if(is.null(colnames(mouse_expression_t))) {
+  colnames(mouse_expression_t) <- paste0("Cell_", 1:ncol(mouse_expression_t))
+}
+
+# Check for any issues with the count matrix
+print(paste("Transposed expression dimensions:", dim(mouse_expression_t)[1], "x", dim(mouse_expression_t)[2]))
+print(paste("Data type:", class(mouse_expression_t)))
+print(paste("Contains negative values:", any(mouse_expression_t < 0, na.rm = TRUE)))
+print(paste("Contains NA values:", any(is.na(mouse_expression_t))))
+print(paste("Data range:", min(mouse_expression_t), "to", max(mouse_expression_t)))
+
+# Remove any genes with all zeros
+gene_sums <- rowSums(mouse_expression_t)
+genes_to_keep <- gene_sums > 0
+mouse_expression_t <- mouse_expression_t[genes_to_keep, ]
+print(paste("Genes after filtering out zero genes:", nrow(mouse_expression_t)))
+
+# Create Seurat object for mouse data with more lenient parameters
+tryCatch({
+  mouse_brain <- CreateSeuratObject(
+    counts = mouse_expression_t, 
+    project = "MouseBrain",
+    min.cells = 1,    # More lenient: Include features detected in at least 1 cell
+    min.features = 1  # More lenient: Include cells where at least 1 feature is detected
+  )
+  
+  print("Successfully created Seurat object!")
+  print(paste("Number of cells:", ncol(mouse_brain)))
+  print(paste("Number of features:", nrow(mouse_brain)))
+  
+}, error = function(e) {
+  print(paste("Error creating Seurat object:", e$message))
+  
+  # Try with even simpler approach
+  print("Trying alternative approach...")
+  
+  # Convert to simple matrix
+  simple_matrix <- as.matrix(mouse_expression_t)
+  storage.mode(simple_matrix) <- "integer"
+  
+  mouse_brain <<- CreateSeuratObject(
+    counts = simple_matrix,
+    project = "MouseBrain",
+    min.cells = 0,    # No filtering
+    min.features = 0  # No filtering
+  )
+  
+  print("Created Seurat object with alternative approach!")
+})
+
+# Verify that nCount_RNA and nFeature_RNA were calculated
+print("Mouse brain metadata after Seurat object creation:")
+print(head(mouse_brain@meta.data))
+
+# Add spatial coordinates to metadata
+mouse_brain@meta.data$x <- mouse_coords$x
+mouse_brain@meta.data$y <- mouse_coords$y
+```
+
+```{r}
+# Create spatial coordinates dataframe for Seurat spatial functionality
+spatial_coords_mouse <- data.frame(
+  imagerow = mouse_coords$y,
+  imagecol = mouse_coords$x,
+  row.names = colnames(mouse_brain)
+)
+
+# Add spatial information to Seurat object
+mouse_brain@images[["slice1"]] <- new(
+  Class = "SlideSeq",
+  coordinates = spatial_coords_mouse
+)
+
+# Final check of metadata
+head(mouse_brain@meta.data)
+summary(mouse_brain@meta.data$nCount_RNA)
+summary(mouse_brain@meta.data$nFeature_RNA)
+```
+
+```{r}
+# Load and process human brain data
+human_coords <- read_csv("/Users/emilyekstrum/Desktop/zhangLab/data/DLPFC_Data/Sample151673/DLPFC_spatial_3639cells_2cols.csv")
+human_expression <- read_csv("/Users/emilyekstrum/Desktop/zhangLab/data/DLPFC_Data/Sample151673/LIBD_mrna_count_33538genes_3639cells.csv")
+
+# Set gene names as row names for expression data
+rownames(human_expression) <- human_expression[[1]]
+human_expression <- human_expression[, -1]
+
+# Create Seurat object for human data
+human_brain <- CreateSeuratObject(counts = human_expression, project = "HumanBrain")
+
+# Add spatial coordinates to metadata (assuming first column is x, second is y)
+if(ncol(human_coords) >= 2) {
+  human_brain@meta.data$x <- human_coords[[2]]  # Adjust column indices as needed
+  human_brain@meta.data$y <- human_coords[[3]]  # Adjust column indices as needed
+  
+  # Create spatial coordinates dataframe
+  spatial_coords_human <- data.frame(
+    imagerow = human_coords[[3]],
+    imagecol = human_coords[[2]],
+    row.names = colnames(human_brain)
+  )
+  
+  # Add spatial information to Seurat object
+  human_brain@images[["slice1"]] <- new(
+    Class = "SlideSeq", 
+    coordinates = spatial_coords_human
+  )
+}
+
+head(human_brain@meta.data)
+```
+
+```{r}
+# Process mouse brain data with SCTransform
+mouse_brain <- SCTransform(mouse_brain, verbose = FALSE)
+```
+
+```{r}
+# Process human brain data with SCTransform
+human_brain <- SCTransform(human_brain, verbose = FALSE)
+```
+
+Visualize mouse brain data
+```{r}
+# Basic QC visualization for mouse data
+mouse_plot1 <- VlnPlot(mouse_brain, features = "nCount_RNA", pt.size = 0.1) + 
+  NoLegend() + ggtitle("Mouse Brain - UMI Counts")
+
+mouse_plot2 <- VlnPlot(mouse_brain, features = "nFeature_RNA", pt.size = 0.1) + 
+  NoLegend() + ggtitle("Mouse Brain - Gene Counts")
+
+wrap_plots(mouse_plot1, mouse_plot2)
+```
+
+```{r}
+# Spatial visualization for mouse data
+if("slice1" %in% names(mouse_brain@images)) {
+  mouse_spatial1 <- SpatialFeaturePlot(mouse_brain, features = "nCount_RNA") + 
+    theme(legend.position = "right") + ggtitle("Mouse Brain - Spatial UMI Distribution")
+  
+  mouse_spatial2 <- SpatialFeaturePlot(mouse_brain, features = "nFeature_RNA") + 
+    theme(legend.position = "right") + ggtitle("Mouse Brain - Spatial Gene Distribution")
+  
+  wrap_plots(mouse_spatial1, mouse_spatial2)
+}
+```
+
+Visualize human brain data
+```{r}
+# Basic QC visualization for human data
+human_plot1 <- VlnPlot(human_brain, features = "nCount_RNA", pt.size = 0.1) + 
+  NoLegend() + ggtitle("Human Brain - UMI Counts")
+
+human_plot2 <- VlnPlot(human_brain, features = "nFeature_RNA", pt.size = 0.1) + 
+  NoLegend() + ggtitle("Human Brain - Gene Counts")
+
+wrap_plots(human_plot1, human_plot2)
+```
+
+```{r}
+# Spatial visualization for human data
+if("slice1" %in% names(human_brain@images)) {
+  human_spatial1 <- SpatialFeaturePlot(human_brain, features = "nCount_RNA") + 
+    theme(legend.position = "right") + ggtitle("Human Brain - Spatial UMI Distribution")
+  
+  human_spatial2 <- SpatialFeaturePlot(human_brain, features = "nFeature_RNA") + 
+    theme(legend.position = "right") + ggtitle("Human Brain - Spatial Gene Distribution")
+  
+  wrap_plots(human_spatial1, human_spatial2)
+}
+```
+
+```{r}
+# Run clustering analysis on mouse brain
+mouse_brain <- RunPCA(mouse_brain, assay = "SCT", verbose = FALSE)
+mouse_brain <- FindNeighbors(mouse_brain, reduction = "pca", dims = 1:30)
+mouse_brain <- FindClusters(mouse_brain, verbose = FALSE)
+mouse_brain <- RunUMAP(mouse_brain, reduction = "pca", dims = 1:30)
+```
+
+```{r}
+# Visualize mouse brain clusters
+mouse_p1 <- DimPlot(mouse_brain, reduction = "umap", label = TRUE) + ggtitle("Mouse Brain UMAP")
+mouse_p2 <- SpatialDimPlot(mouse_brain, label = TRUE, label.size = 3) + ggtitle("Mouse Brain Spatial Clusters")
+mouse_p1 + mouse_p2
+```
+
+```{r}
+# Run clustering analysis on human brain
+human_brain <- RunPCA(human_brain, assay = "SCT", verbose = FALSE)
+human_brain <- FindNeighbors(human_brain, reduction = "pca", dims = 1:30)
+human_brain <- FindClusters(human_brain, verbose = FALSE)
+human_brain <- RunUMAP(human_brain, reduction = "pca", dims = 1:30)
+```
+
+```{r}
+# Visualize human brain clusters
+human_p1 <- DimPlot(human_brain, reduction = "umap", label = TRUE) + ggtitle("Human Brain UMAP")
+human_p2 <- SpatialDimPlot(human_brain, label = TRUE, label.size = 3) + ggtitle("Human Brain Spatial Clusters")
+human_p1 + human_p2
+```

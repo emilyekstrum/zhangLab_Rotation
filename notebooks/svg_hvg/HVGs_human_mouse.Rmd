@@ -1,0 +1,271 @@
+---
+title: "HVG Selection in Human and Mouse Data"
+author: "Emily Ekstrum"
+date: "1/8/26"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    number_sections: true
+    theme: "cosmo"
+    df_print: paged
+    
+params:
+  mouse_rds_path: "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/mousebrain_seurat.rds"
+  human_rds_path: "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/humanbrain_seurat.rds"
+  seed: 123
+---
+
+# file setup
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,
+  fig.width = 8,
+  fig.height = 5
+)
+set.seed(params$seed)
+```
+
+# HVG Selection in Mouse Brain Spatial Transcriptomics Data
+
+> **Input**: `r params$mouse_rds_path`
+
+# load in packages
+
+```{r packages}
+pkgs <- c(
+  "Seurat",
+  "Matrix",
+  "ggplot2",
+  "dplyr",
+  "tibble",
+  "patchwork"
+)
+
+to_install <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
+if (length(to_install) > 0) {
+  install.packages(to_install, repos = "https://cloud.r-project.org")
+}
+
+# Load
+lapply(pkgs, library, character.only = TRUE)
+```
+
+# load in mouse data
+```{r load-mouse-data}
+mouse_seurat <- readRDS(params$mouse_rds_path)
+mouse_seurat
+```
+
+# Identify HVGs
+```{r mouse-hvg-identification}
+mouse_hvg <- FindVariableFeatures(mouse_seurat, assay = "SCT")
+length(rownames(mouse_hvg))
+head(mouse_hvg, 20)
+```
+
+# EDA of HVGs
+# plot variable features
+```{r}
+DefaultAssay(mouse_seurat) <- "SCT"
+
+mouse_hvg <- as.character(VariableFeatures(mouse_seurat))
+mouse_hvg_plot <- VariableFeaturePlot(mouse_seurat, assay = "SCT")
+
+to_label <- intersect(mouse_hvg, rownames(mouse_hvg_plot$data))[1:20]
+
+LabelPoints(plot = mouse_hvg_plot, points = to_label, repel = TRUE)
+```
+
+Hemoglobin genes are the most variable genes in the mouse brain spatial transcriptomics data, which is likely due to contamination from blood. 
+Other top HVGs include Plp1, Mbp, Mobp, (oligodendrocytes & myelin) Pcp2, Pcp4, (cortical programs), Ptgds (glial), Calb1, and Pvalb (neural subtype markers).  
+
+# Heatmap of top 50 HVGs
+```{r}
+DoHeatmap(mouse_seurat, features = head(mouse_hvg, 50), size = 3) + NoLegend()
+```
+
+# plot heatmap by clusters - first need to generate clusters
+```{r}
+DefaultAssay(mouse_seurat) <- "SCT"
+mouse_seurat <- RunPCA(mouse_seurat, verbose = FALSE) # first dim reduction via PCA
+mouse_seurat <- FindNeighbors(mouse_seurat, dims = 1:30) # construct KNN graph
+mouse_seurat <- FindClusters(mouse_seurat, resolution = 0.5) # cluster cells based on KNN graph (Louvain/Leiden algorithm)
+```
+
+```{r}
+# view cluster identities
+table(Idents(mouse_seurat))
+colnames(mouse_seurat@meta.data)
+```
+
+# Heatmap of top 50 HVGs by clusters
+```{r}
+DoHeatmap(mouse_seurat, features = head(mouse_hvg, 50), size = 3) + NoLegend()
+```
+
+Clear cluster-specific patterns.
+Cluster 5 is likely blood contamination, as it shows high expression of hemoglobin genes.
+Cluster 4 has high enrichment of neuronal markers (Pcp4, Rorb, Nrg, Pvalb).
+Cluster 0 has high expression of oligodendrocyte markers (Plp1, Mbp, Mobp).
+
+
+# Spatial plot of top HVG (non blood)
+```{r}
+gene <- mouse_hvg[3]
+df <- data.frame(mouse_seurat@meta.data, expr = FetchData(mouse_seurat, gene)[,1])
+
+ggplot(df, aes(x = imagecol, y = imagerow, color = expr)) +
+  geom_point(size = 0.6) +
+  coord_fixed() +
+  scale_y_reverse() +
+  theme_classic() +
+  labs(title = paste("Top HVG in tissue:", gene))
+
+```
+
+
+# remove hemoglobin genes from HVG list
+```{r remove-hemoglobin-genes}
+mouse_hvg_no_blood <- mouse_hvg[!mouse_hvg %in% c("Hba-a1", "Hba-a2", "Hbb-bs", "Hbb-bt")]
+length(mouse_hvg_no_blood)
+head(mouse_hvg_no_blood, 20)
+```
+
+
+# store mouse HVG in a gene by cell matrix
+```{r mouse-hvg-matrix}
+mouse_hvg_matrix <- GetAssayData(mouse_seurat, assay = "SCT", layer = "data")[mouse_hvg_no_blood, ]
+mouse_hvg_matrix[1:5, 1:5]
+
+head(rownames(mouse_hvg_matrix), 20)
+```
+
+
+# save mouse HVG matrix
+```{r save-mouse-hvg-matrix}
+saveRDS(mouse_hvg_matrix, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/hvgs/mouse_hvg_gene_cell_matrix.rds")
+```
+
+# or store as mouse HVG cell by gene matrix
+```{r}
+mouse_hvg_matrix_gene_by_cell <- t(mouse_hvg_matrix)
+dim(mouse_hvg_matrix_gene_by_cell) 
+
+head(mouse_hvg_matrix_gene_by_cell[, 1:20])
+```
+
+# save mouse HVG cell by gene matrix
+```{r save-mouse-hvg-matrix-gene-by-cell}
+saveRDS(mouse_hvg_matrix_gene_by_cell, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/hvgs/mouse_hvg_cell_gene_matrix.rds")
+```
+
+
+#------------- human data ----------------#
+
+
+# load in human data
+```{r load-human-data}
+human_seurat <- readRDS(params$human_rds_path)
+human_seurat
+```
+
+# Identify HVGs
+```{r human-hvg-identification}
+hvg_human <- FindVariableFeatures(human_seurat, assay = "SCT")
+length(rownames(hvg_human))
+head(hvg_human, 20)
+```
+
+# EDA of HVGs
+```{r}
+DefaultAssay(human_seurat) <- "SCT"
+
+human_hvg <- as.character(VariableFeatures(human_seurat))
+human_hvg_plot <- VariableFeaturePlot(human_seurat, assay = "SCT")
+
+to_label <- intersect(human_hvg, rownames(human_hvg_plot$data))[1:20]
+
+LabelPoints(plot = human_hvg_plot, points = to_label, repel = TRUE)
+```
+
+Does not appear to be any blood contamination in the human brain spatial transcriptomics data.
+Top HVGs include MBP (myelin basic protein), PLP1 (proteolipid protein 1 - involved in myelin), GFAP (glial fibrillary acidic protein), and other genes related to oligodendrocytes and glial cells.
+
+
+# Heatmap of top 50 HVGs
+```{r}
+DoHeatmap(human_seurat, features = head(human_hvg, 50), size = 3) + NoLegend()
+```
+
+As above, looks like noise but need to group by cluster to see pattern.
+
+# plot heatmap by clusters - first need to generate clusters
+```{r}
+DefaultAssay(human_seurat) <- "SCT"
+human_seurat <- RunPCA(human_seurat, verbose = FALSE)
+human_seurat <- FindNeighbors(human_seurat, dims = 1:30)
+human_seurat <- FindClusters(human_seurat, resolution = 0.5)
+```
+
+```{r}
+# view cluster identities
+table(Idents(human_seurat))
+colnames(human_seurat@meta.data)
+```
+
+# Heatmap of top 50 HVGs by clusters
+```{r}
+DoHeatmap(human_seurat, features = head(human_hvg, 50), size = 3) + NoLegend()
+```
+
+Also clear cluster-specific patterns.
+Cluster 3 is very enriched with glial markers (MBP, MAG, CNP, GFAP, etc)
+Cluster 4 is high in secretoglobin genes (SCGB1A1, SCGB3A1) which are markers of lung tissue - likely contamination.
+Cluster 2 has high expression of SNAP25 and NRGN, which are involved in neurotransmitter releasse and synaptic plasticity, respectively.
+Cluster 1 has high expression of ENC1, SNAP25, NRGN, and CCK. All of these genes are involved in the nervous system.
+Cluster 0 does not seem to have any obvious trends.
+
+
+# Spatial plot of top HVG
+```{r}
+gene <- human_hvg[1]
+df <- data.frame(human_seurat@meta.data, expr = FetchData(human_seurat, gene)[,1])
+
+ggplot(df, aes(x = imagecol, y = imagerow, color = expr)) +
+  geom_point(size = 0.6) +
+  coord_fixed() +
+  scale_y_reverse() +
+  theme_classic() +
+  labs(title = paste("Top HVG in tissue:", gene))
+
+```
+
+# store mouse HVG in a gene by cell matrix
+```{r mouse-hvg-matrix}
+human_hvg_matrix <- GetAssayData(human_seurat, assay = "SCT", layer = "data")[human_hvg, ]
+human_hvg_matrix[1:5, 1:5]
+
+head(rownames(human_hvg_matrix), 20)
+```
+
+# save human gene by cell HVG matrix
+```{r save-hvg-matrix}
+saveRDS(human_hvg_matrix, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/hvgs/human_hvg_gene_cell_matrix.rds")
+```
+
+# or store as mouse HVG cell by gene matrix
+```{r}
+human_hvg_matrix_cell_by_gene <- t(human_hvg_matrix)
+dim(human_hvg_matrix_cell_by_gene) 
+
+head(human_hvg_matrix_cell_by_gene[, 1:20])
+```
+
+# save mouse HVG gene by cell matrix
+```{r}
+saveRDS(human_hvg_matrix_cell_by_gene, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/hvgs/human_hvg_cell_gene_matrix.rds")
+```
+

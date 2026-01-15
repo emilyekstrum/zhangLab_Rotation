@@ -1,0 +1,492 @@
+---
+title: "SVG Selection in Human and Mouse Data"
+author: "Emily Ekstrum"
+date: "1/8/26"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    number_sections: true
+    theme: "cosmo"
+    df_print: paged
+    
+params:
+  mouse_rds_path: "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/mousebrain_seurat.rds"
+  human_rds_path: "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/humanbrain_seurat.rds"
+  seed: 123
+---
+
+# file setup
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,
+  fig.width = 8,
+  fig.height = 5
+)
+set.seed(params$seed)
+```
+
+# SVG Selection in Mouse Brain Spatial Transcriptomics Data
+
+
+# load in packages
+
+```{r packages}
+pkgs <- c(
+  "Seurat",
+  "Matrix",
+  "ggplot2",
+  "dplyr",
+  "tibble",
+  "patchwork",
+  "Rfast2",
+  "STew",
+  "BiocManager"
+)
+
+to_install <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
+if (length(to_install) > 0) {
+  install.packages(to_install, repos = "https://cloud.r-project.org")
+}
+
+# Load
+lapply(pkgs, library, character.only = TRUE)
+```
+
+# load in mouse data
+```{r load-mouse-data}
+mouse_seurat <- readRDS(params$mouse_rds_path)
+mouse_seurat
+```
+
+```{r}
+# get coords (cells x 2)
+spatial_loc <- as.matrix(
+  mouse_seurat@meta.data[colnames(mouse_seurat), c("imagecol","imagerow"), drop = FALSE]
+)
+storage.mode(spatial_loc) <- "numeric"
+colnames(spatial_loc) <- c("x","y")
+stopifnot(is.matrix(spatial_loc), ncol(spatial_loc) == 2, nrow(spatial_loc) == ncol(mouse_seurat))
+
+# SCT (genes x cells)
+DefaultAssay(mouse_seurat) <- "SCT"
+
+# SCT Pearson residuals
+expr_sct <- GetAssayData(mouse_seurat, assay = "SCT", layer = "scale.data")
+
+#  only HVGs to speed up computation
+hvg <- as.character(VariableFeatures(mouse_seurat))
+expr_sct <- expr_sct[hvg, , drop = FALSE]
+
+# Moran's I SVG (run on matrix - returns a data.frame object)
+svg_df <- FindSpatiallyVariableFeatures(
+  object = expr_sct,
+  spatial.location = spatial_loc,
+  selection.method = "moransi"
+)
+
+# force data.frame for consistent handling
+svg_df <- as.data.frame(svg_df)
+
+# cehck gene names exist
+if (is.null(rownames(svg_df))) {
+  stop("svg_df has no rownames (gene IDs). If there's a gene column, set rownames(svg_df) <- svg_df$gene")
+}
+
+# output inspection
+names(svg_df)
+# str(svg_df)
+
+# pick Moran's I column 
+score_col <- intersect(
+  c("moransi", "MoranI", "moran.i", "I", "observed", "statistic"),
+  names(svg_df)
+)[1]
+
+if (is.na(score_col)) {
+  stop(paste("Couldn't find a Moran's I score column. Available columns:",
+             paste(names(svg_df), collapse = ", ")))
+}
+
+# score -> numeric vector (handles odd column types) 
+score <- svg_df[[score_col]]
+if (is.data.frame(score)) score <- score[[1]]
+score <- as.numeric(score)
+
+# rank genes by spatial autocorrelation (high to low)
+svg_genes <- rownames(svg_df)[order(score, decreasing = TRUE)]
+head(svg_genes, 20)
+
+# store inside the Seurat object 
+mouse_seurat@misc$svg_sct_moransi_table <- svg_df
+mouse_seurat@misc$svg_sct_moransi_genes <- svg_genes
+
+```
+
+```{r}
+head(svg_df)
+length(rownames(svg_df))
+```
+
+10,000 SVGs identified.
+
+```{r}
+# save mouse SVG table
+svg_df <- as.data.frame(svg_df)
+svg_df$gene <- rownames(svg_df)
+saveRDS(svg_df, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/svgs/seurat_mouse_svg_table.rds")
+```
+
+```{r}
+length(nrows(mouse_seurat@misc$svg_sct_moransi_table))
+```
+
+# store SVGs in a gene by cell matrix
+```{r mouse-svg-matrix}
+mouse_svg_matrix <- GetAssayData(mouse_seurat, assay = "SCT", layer = "data")[mouse_seurat@misc$svg_sct_moransi_genes, ]
+mouse_svg_matrix[1:5, 1:5]
+head(rownames(mouse_svg_matrix), 20)
+```
+
+
+# save mouse SVG matrix
+```{r save-mouse-svg-matrix}
+saveRDS(mouse_svg_matrix, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/svgs/seurat_mouse_svg_gene_cell_matrix.rds")
+```
+
+# or store SVGs in a cell by gene matrix
+```{r}
+mouse_svg_matrix <- t(mouse_svg_matrix)
+mouse_svg_matrix[1:5, 1:5]
+head(colnames(mouse_svg_matrix), 20)
+```
+
+# save mouse SVG matrix
+```{r save-human-svg-matrix}
+saveRDS(mouse_svg_matrix, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/svgs/seurat_mouse_svg_cell_gene_matrix.rds")
+```
+
+# eda of top SVGs
+```{r mouse-svg-eda}
+svg_df <- as.data.frame(svg_df)
+svg_df$gene <- rownames(svg_df)
+
+# numeric vectors
+svg_df$observed <- as.numeric(svg_df$observed)
+svg_df$p.value  <- as.numeric(svg_df$p.value)
+
+# score = -log10(p)
+svg_df$neglog10_p <- -log10(pmax(svg_df$p.value, .Machine$double.xmin))
+
+# top SVG genes (rank by p-value, tie-break by observed)
+svg_df <- svg_df[order(svg_df$p.value, -svg_df$observed), , drop = FALSE]
+to_label <- head(svg_df$gene, 20)
+
+p <- ggplot(svg_df, aes(x = observed, y = neglog10_p)) +
+  geom_point(alpha = 0.6, size = 1) +
+  theme_classic() +
+  labs(
+    title = "Mouse SCT SVGs (Moran’s I)",
+    x = "Moran’s I (observed)",
+    y = "-log10(p-value)"
+  )
+
+LabelPoints(plot = p, points = to_label, repel = TRUE)
+```
+
+Fth1, Calb2, Nnat, Mbp, Pcp2, Hoxb5, and Ttr genes are among the top SVGs identified based on Moran's I. Calb2, Pcp2, Mbp, and Nnat are involved in neural processed while Boxb5, Ttr, and Fth1 are evidence of blood contamination.
+
+```{r}
+DefaultAssay(mouse_seurat) <- "SCT"
+
+# HVG plot
+p_hvg <- VariableFeaturePlot(mouse_seurat, assay = "SCT")
+
+# SVG genes from svg_df:
+svg_genes <- rownames(svg_df)[order(svg_df$p.value, -svg_df$observed)]
+
+# label genes that are in the HVG plot data
+to_label <- intersect(svg_genes, rownames(p_hvg$data))[1:20]
+
+LabelPoints(plot = p_hvg, points = to_label, repel = TRUE)
+```
+
+There is some overlap between the top SVGs and HVGs, but many SVGs are not highly variable across the tissue.
+
+# heatmap of top 50 SVGs
+```{r mouse-svg-heatmap}
+DefaultAssay(mouse_seurat) <- "SCT"
+
+svg_ranked <- svg_df[order(svg_df$p.value, -svg_df$observed), , drop = FALSE]
+svg_top50  <- rownames(svg_ranked)[1:50]
+
+DoHeatmap(
+  mouse_seurat,
+  features = svg_top50,
+  size = 3
+) + NoLegend()
+
+```
+
+# plot heatmap by clusters - first need to generate clusters
+```{r}
+DefaultAssay(mouse_seurat) <- "SCT"
+
+mouse_seurat <- Seurat::RunPCA(mouse_seurat, verbose = FALSE)
+mouse_seurat <- Seurat::FindNeighbors(mouse_seurat, reduction = "pca", dims = 1:30, verbose = FALSE)
+
+# check graph exists right before clustering
+names(mouse_seurat@graphs)
+
+mouse_seurat <- Seurat::FindClusters(mouse_seurat, graph.name = "SCT_snn", resolution = 0.5, verbose = FALSE)
+```
+
+```{r}
+# view cluster identities
+table(Idents(mouse_seurat))
+colnames(mouse_seurat@meta.data)
+```
+
+# Heatmap of top 50 SVGs by clusters
+```{r}
+DoHeatmap(
+  mouse_seurat,
+  features = svg_top50,
+  group.by = "seurat_clusters",
+  size = 3
+) + NoLegend()
+```
+
+There is clear cluster-specific expression patterns among the top SVGs.
+Cluster 0 is characterized by high expression of Fth1, Mbp, Plp1, Trf, Plekhb1, enpb2, mag, and Cryab.
+  - slight blood contamination, but some myelin associated genes
+Cluster 2 has high expression of Cplh1, Adcyp1, Gabra6, Cblh3, and Snap25.
+  - some blood contamintion, mostly neurotransmitter related genes
+Cluster 3 is marked by high expression of Snap25, Vamp1, Slc6a5, Lamp5, and Hoxb5. 
+  - neurotransmitter related genes
+Cluster 4 has very strong expression of Pcp2, Gng13, Pvalb, Car8, Itpr8, Pcp4, Rgs8, and Calb1.
+  - Purkinje cell markers and motor/retinal sensory markers
+Cluster 5 shows high expression of Cpe and Nnat.
+  - ion channel (nnat) and hormnoe (Cpe) receptors
+Cluster 6 is characterized by high expression of Tcf712, Cpe, Tnnt1, Cck, and Prkcd.
+  - signaling and hormone related genes
+Cluster 7 has high expression of Nrgn, Cck, Ctxn1, Rasgrp1, and Basp1.
+  - signaling and synaptic genes
+
+#------------- human data ----------------#
+
+
+# load in human data
+```{r load-human-data}
+human_seurat <- readRDS(params$human_rds_path)
+human_seurat
+```
+
+
+# identify SVGs using Seurat
+```{r}
+# get coords (cells x 2)
+spatial_loc <- as.matrix(
+  human_seurat@meta.data[colnames(human_seurat), c("imagecol","imagerow"), drop = FALSE]
+)
+storage.mode(spatial_loc) <- "numeric"
+colnames(spatial_loc) <- c("x","y")
+stopifnot(is.matrix(spatial_loc), ncol(spatial_loc) == 2, nrow(spatial_loc) == ncol(human_seurat))
+
+# SCT (genes x cells)
+DefaultAssay(human_seurat) <- "SCT"
+
+# SCT Pearson residuals
+expr_sct <- GetAssayData(human_seurat, assay = "SCT", layer = "scale.data")
+
+#  only HVGs to speed up computation
+hvg <- as.character(VariableFeatures(human_seurat))
+expr_sct <- expr_sct[hvg, , drop = FALSE]
+
+# Moran's I SVG (run on matrix - returns a data.frame object)
+svg_df <- FindSpatiallyVariableFeatures(
+  object = expr_sct,
+  spatial.location = spatial_loc,
+  selection.method = "moransi"
+)
+
+# force data.frame for consistent handling
+svg_df <- as.data.frame(svg_df)
+
+# cehck gene names exist
+if (is.null(rownames(svg_df))) {
+  stop("svg_df has no rownames (gene IDs). If there's a gene column, set rownames(svg_df) <- svg_df$gene")
+}
+
+# output inspection
+names(svg_df)
+# str(svg_df)
+
+# pick Moran's I column 
+score_col <- intersect(
+  c("moransi", "MoranI", "moran.i", "I", "observed", "statistic"),
+  names(svg_df)
+)[1]
+
+if (is.na(score_col)) {
+  stop(paste("Couldn't find a Moran's I score column. Available columns:",
+             paste(names(svg_df), collapse = ", ")))
+}
+
+# score -> numeric vector (handles odd column types) 
+score <- svg_df[[score_col]]
+if (is.data.frame(score)) score <- score[[1]]
+score <- as.numeric(score)
+
+# rank genes by spatial autocorrelation (high to low)
+svg_genes <- rownames(svg_df)[order(score, decreasing = TRUE)]
+head(svg_genes, 20)
+
+# store inside the Seurat object 
+human_seurat@misc$svg_sct_moransi_table <- svg_df
+human_seurat@misc$svg_sct_moransi_genes <- svg_genes
+
+```
+
+```{r}
+length(rownames(svg_df))
+
+```
+
+```{r}
+# save human SVG table
+svg_df <- as.data.frame(svg_df)
+svg_df$gene <- rownames(svg_df)
+saveRDS(svg_df, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/svgs/seurat_human_svg_table.rds")
+```
+
+# store SVGs in a gene by cell matrix
+```{r human-svg-matrix}
+human_svg_matrix <- GetAssayData(human_seurat, assay = "SCT", layer = "data")[human_seurat@misc$svg_sct_moransi_genes, ]
+human_svg_matrix[1:5, 1:5]
+head(rownames(human_svg_matrix), 20)
+```
+# save human SVG matrix
+```{r save-human-svg-matrix}
+saveRDS(human_svg_matrix, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/svgs/seurat_human_svg_gene_cell_matrix.rds")
+```
+
+# or store SVGs in a cell by gene matrix
+```{r}
+human_svg_matrix <- t(human_svg_matrix)
+human_svg_matrix[1:5, 1:5]
+head(colnames(human_svg_matrix), 20)
+```
+
+# save mouse SVG matrix
+```{r save-human-svg-matrix}
+saveRDS(human_svg_matrix, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/svgs/seurat_human_svg_cell_gene_matrix.rds")
+```
+
+# eda of top SVGs
+```{r human-svg-eda}
+svg_df <- as.data.frame(svg_df)
+svg_df$gene <- rownames(svg_df)
+
+#  numeric vectors
+svg_df$observed <- as.numeric(svg_df$observed)
+svg_df$p.value  <- as.numeric(svg_df$p.value)
+
+# score = -log10(p)
+svg_df$neglog10_p <- -log10(pmax(svg_df$p.value, .Machine$double.xmin))
+
+# choose top SVG genes (rank by p-value, tie-break by observed)
+svg_df <- svg_df[order(svg_df$p.value, -svg_df$observed), , drop = FALSE]
+to_label <- head(svg_df$gene, 20)
+
+p <- ggplot(svg_df, aes(x = observed, y = neglog10_p)) +
+  geom_point(alpha = 0.6, size = 1) +
+  theme_classic() +
+  labs(
+    title = "Human SCT SVGs (Moran’s I)",
+    x = "Moran’s I (observed)",
+    y = "-log10(p-value)"
+  )
+
+LabelPoints(plot = p, points = to_label, repel = TRUE)
+```
+
+Mbp, Cnp, Mag, Scgb2a2, Gfap, Cryab, and Plp1 genes are among the top SVGs identified based on Moran's I. Mbp, Plp1, Gfap, and Mag are associated with myelin. 
+
+```{r}
+DefaultAssay(human_seurat) <- "SCT"
+
+# normal HVG plot
+p_hvg <- VariableFeaturePlot(human_seurat, assay = "SCT")
+
+# SVG genes from svg_df:
+svg_genes <- rownames(svg_df)[order(svg_df$p.value, -svg_df$observed)]
+
+# only label genes that are in the HVG plot data
+to_label <- intersect(svg_genes, rownames(p_hvg$data))[1:20]
+
+LabelPoints(plot = p_hvg, points = to_label, repel = TRUE)
+```
+
+There is some overlap between the top SVGs and HVGs, especially for the very variable genes. 
+
+# heatmap of top 50 SVGs
+```{r human-svg-heatmap}
+DefaultAssay(human_seurat) <- "SCT"
+
+svg_ranked <- svg_df[order(svg_df$p.value, -svg_df$observed), , drop = FALSE]
+svg_top50  <- rownames(svg_ranked)[1:50]
+
+DoHeatmap(
+  human_seurat,
+  features = svg_top50,
+  size = 3
+) + NoLegend()
+
+```
+
+# plot heatmap by clusters - first need to generate clusters
+```{r}
+options(future.globals.maxSize = 8 * 1024^3)
+library(future)
+plan(multisession)  # or sequential
+
+DefaultAssay(human_seurat) <- "SCT"
+
+human_seurat <- Seurat::RunPCA(human_seurat, verbose = FALSE)
+human_seurat <- Seurat::FindNeighbors(human_seurat, reduction = "pca", dims = 1:30, verbose = FALSE)
+
+# check graph exists right before clustering
+names(human_seurat@graphs)
+
+human_seurat <- Seurat::FindClusters(human_seurat, graph.name = "SCT_snn", resolution = 0.5, verbose = FALSE)
+```
+
+```{r}
+# view cluster identities
+table(Idents(human_seurat))
+colnames(human_seurat@meta.data)
+```
+
+# Heatmap of top 50 SVGs by clusters
+```{r}
+DoHeatmap(
+  human_seurat,
+  features = svg_top50,
+  group.by = "seurat_clusters",
+  size = 3
+) + NoLegend()
+```
+
+The top SVGs show moderate cluster separation. 
+Cluster 1 is marked by high expression of Enc1, Nrgn, Rtn1, Vsnl1, and Camk2n1.
+  - synaptic and neurotransmitter related genes
+Cluster 2 has high expression of Snap25, Tmsb10, Rtn1, and Vsnl1.
+  - synaptic and neurotransmitter related genes
+Cluster 3 has very strong expression of Mbp, Plp1, Gfap, Cryab, Cnp, Mobp, Ftr1, S100b, and etc.
+  - myelin associated genes
+Cluster 4 is weakly characterized by high expfession of Scgb2a2, Scgb1d2, and Mgp.
+  - secretoglobin family genes
+

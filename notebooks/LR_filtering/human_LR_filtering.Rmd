@@ -1,0 +1,209 @@
+---
+title: "human_LR_filtering.Rmd"
+author: "Emily Ekstrum"
+date: "`r Sys.Date()`"
+output: html_document
+
+params:
+  
+  # cell chat input must be gene by cell matrices
+  human_hvg: "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/hvgs/human_hvg_gene_cell_matrix.rds"
+  human_nnsvg:  "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/svgs/nnSVG_human_svg_gene_cell_matrix.rds"
+  human_seurat_svg:  "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/svgs/seurat_human_svg_gene_cell_matrix.rds"
+
+    
+  seed: 123
+---
+
+# file setup
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,
+  fig.width = 8,
+  fig.height = 5
+)
+set.seed(params$seed)
+```
+
+# Ligand receptor filtering for HVGs and SVGs
+
+# load in packages
+
+```{r packages}
+pkgs <- c(
+  "Seurat",
+  "Matrix",
+  "ggplot2",
+  "dplyr",
+  "tibble",
+  "patchwork",
+  "umap",
+  "CellChat"
+)
+
+to_install <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
+if (length(to_install) > 0) {
+  install.packages(to_install, repos = "https://cloud.r-project.org")
+}
+
+# Load
+lapply(pkgs, library, character.only = TRUE)
+```
+
+
+```{r}
+# load in human data
+human_hvg <- readRDS(params$human_hvg)
+human_nnsvg <- readRDS(params$human_nnsvg)
+human_seurat_svg <- readRDS(params$human_seurat_svg)
+
+# make sure they are gene by cell 
+head(human_hvg[1:5,])
+head(human_nnsvg[1:5,])
+head(human_seurat_svg[1:5,])
+```
+
+```{r}
+# find percent similarity of genes in hvgs and svgs
+hvg_genes <- rownames(human_hvg)
+nnsvg_genes <- rownames(human_nnsvg)
+seurat_svg_genes <- rownames(human_seurat_svg)
+length(intersect(hvg_genes, nnsvg_genes)) / length(union(hvg_genes, nnsvg_genes))
+length(intersect(hvg_genes, seurat_svg_genes)) / length(union(hvg_genes, seurat_svg_genes))
+length(intersect(nnsvg_genes, seurat_svg_genes)) / length(union(nnsvg_genes, seurat_svg_genes))
+```
+
+
+# ----------------- nanxi's code -------------------- #
+
+```{r}
+
+CellChatDB <- CellChatDB.human
+showDatabaseCategory(CellChatDB)
+```
+
+
+```{r}
+# LR table
+db_interactions <- CellChatDB$interaction
+dplyr::glimpse(db_interactions)
+```
+
+```{r}
+# use only a subset, e.g., secreted signaling
+CellChatDB.use <- subsetDB(CellChatDB, search = "Secreted Signaling")
+```
+
+```{r}
+dplyr::glimpse(CellChatDB$interaction)
+```
+
+```{r}
+# use all CellChatDB except for "Non-protein Signaling" for cell-cell communication analysis
+CellChatDB.use <- subsetDB(CellChatDB)
+
+```
+
+```{r}
+dplyr::glimpse(CellChatDB.use$interaction)
+
+```
+
+```{r}
+# LR table
+# use all CellChatDB except for "Non-protein Signaling" for cell-cell communication analysis
+db_interactions_use <- CellChatDB.use$interaction
+```
+
+Get LR definitions that the Visium human brain can support
+
+# HVGs
+```{r}
+# genes present in the expression matrix 
+hvg_genes_in_data <- rownames(human_hvg)
+head(hvg_genes_in_data)
+
+# Keep LR entries whose all ligand and receptor subunits exist in the data.
+
+hvg_lr_present <- db_interactions_use |>
+  rowwise() |>
+  filter(all(unlist(strsplit(ligand, "\\|")) %in% hvg_genes_in_data) &
+           all(unlist(strsplit(receptor, "\\|")) %in% hvg_genes_in_data)) |>
+  ungroup()
+```
+
+```{r}
+nrow(hvg_lr_present)
+head(hvg_lr_present)
+```
+
+
+# SVGs
+# using nnSVG
+
+```{r}
+# genes present in the expression matrix
+svg_genes_in_data <- rownames(human_nnsvg)
+head(svg_genes_in_data)
+
+# Keep LR entries whose all ligand and receptor subunits exist in the data.
+
+svg_lr_present <- db_interactions_use |>
+  rowwise() |>
+  filter(all(unlist(strsplit(ligand, "\\|")) %in% svg_genes_in_data) &
+           all(unlist(strsplit(receptor, "\\|")) %in% svg_genes_in_data)) |>
+  ungroup()
+```
+
+```{r}
+nrow(svg_lr_present)
+head(svg_lr_present)
+```
+
+```{r}
+# find differences in interaction names between hvgs and svgs
+hvg_interactions <- hvg_lr_present$interaction_name
+svg_interactions <- svg_lr_present$interaction_name
+length(intersect(hvg_interactions, svg_interactions)) / length(union(hvg_interactions, svg_interactions))
+```
+
+The LR interactions are not the same between SVGs and HVGs for the human dataset.
+
+```{r}
+# save lr present tables
+saveRDS(hvg_lr_present, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/LR_filtering/human_hvg_lr_present.rds")
+saveRDS(svg_lr_present, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/LR_filtering/human_svg_lr_present.rds")
+```
+
+
+# gene by cell matrices for filtered LR pairs
+```{r}
+# make gene by cell matrices for filtered LR pairs
+human_hvg_lr_genes <- unique(c( unlist(strsplit(hvg_lr_present$ligand, "\\|")),
+                              unlist(strsplit(hvg_lr_present$receptor, "\\|"))))
+human_hvg_lr_gene_cell_matrix <- human_hvg[human_hvg_lr_genes, ]
+human_nnsvg_lr_genes <- unique(c( unlist(strsplit(svg_lr_present$ligand, "\\|")),
+                              unlist(strsplit(svg_lr_present$receptor, "\\|"))))
+human_nnsvg_lr_gene_cell_matrix <- human_nnsvg[human_nnsvg_lr_genes, ]
+```
+
+```{r}
+# check matrices
+head(human_hvg_lr_gene_cell_matrix[1:3,])
+head(human_nnsvg_lr_gene_cell_matrix[1:3,])
+```
+
+```{r}
+# get matrix dimensions (genes by cells)
+dim(human_hvg_lr_gene_cell_matrix)
+dim(human_nnsvg_lr_gene_cell_matrix)
+```
+
+```{r}
+# save matrices as csvs
+write.csv(human_hvg_lr_gene_cell_matrix, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/LR_filtering/human_hvg_lr_gene_cell_matrix.csv")
+write.csv(human_nnsvg_lr_gene_cell_matrix, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/LR_filtering/human_nnsvg_lr_gene_cell_matrix.csv")
+```
+

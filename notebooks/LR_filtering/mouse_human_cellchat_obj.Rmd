@@ -1,0 +1,224 @@
+---
+title: "mouse_human_cellchat_obj.Rmd"
+author: "Emily Ekstrum"
+date: "`r Sys.Date()`"
+output: html_document
+
+params:
+  
+  mouse_seurat: "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/seurat_objs/mousebrain_seurat.rds"
+  human_seurat: "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/seurat_objs/humanbrain_seurat.rds"
+
+    
+  seed: 123
+---
+
+# file setup
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,
+  fig.width = 8,
+  fig.height = 5
+)
+set.seed(params$seed)
+```
+
+# cell chat objs for seurat objs
+
+# load in packages
+
+```{r packages}
+pkgs <- c(
+  "Seurat",
+  "Matrix",
+  "ggplot2",
+  "dplyr",
+  "tibble",
+  "patchwork",
+  "umap",
+  "CellChat",
+  "SeuratData",
+  "spatialLIBD"
+)
+
+to_install <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
+if (length(to_install) > 0) {
+  install.packages(to_install, repos = "https://cloud.r-project.org")
+}
+
+# Load
+lapply(pkgs, library, character.only = TRUE)
+```
+
+
+
+# ----------- mouse data ----------------- #
+
+# use seurat data and make seurat object
+```{r}
+# seurat tutorial
+InstallData("stxBrain")
+brain <- LoadData("stxBrain", type = "anterior1")
+```
+
+```{r}
+plot1 <- VlnPlot(brain, features = "nCount_Spatial", pt.size = 0.1) + NoLegend()
+plot2 <- SpatialFeaturePlot(brain, features = "nCount_Spatial") + theme(legend.position = "right")
+wrap_plots(plot1, plot2)
+```
+
+```{r}
+brain <- SCTransform(brain, assay = "Spatial", verbose = FALSE)
+```
+
+```{r}
+brain@images
+```
+
+# make a cellchat object from seurat
+```{r}
+data.input = Seurat::GetAssayData(brain, layer = "data", assay = "SCT") # normalized data matrix
+```
+
+```{r}
+meta = data.frame(labels = Seurat::Idents(brain), samples = "sample1", row.names = names(Seurat::Idents(brain))) # manually create a dataframe consisting of the cell labels
+meta$samples <- factor(meta$samples)
+unique(meta$labels) # check the cell labels
+```
+
+```{r}
+spatial.locs = Seurat::GetTissueCoordinates(brain, scale = NULL, cols = c("x", "y"))
+spatial.locs = spatial.locs[,1:2]
+head(spatial.locs)
+```
+
+```{r}
+scalefactors = jsonlite::fromJSON(txt = file.path("/Users/emilyekstrum/Desktop/spatial_imaging_data_visium-brain/scalefactors_json.json"))
+spot.size = 65 # the theoretical spot size (um) in 10X Visium
+conversion.factor = spot.size/scalefactors$spot_diameter_fullres
+spatial.factors = data.frame(ratio = conversion.factor, tol = spot.size/2)
+```
+
+```{r}
+d.spatial <- computeCellDistance(coordinates = spatial.locs, ratio = spatial.factors$ratio, tol = spatial.factors$tol)
+min(d.spatial[d.spatial!=0]) # this value should approximately equal 100um for 10X Visium data
+```
+
+# make cell chat object
+```{r}
+cellchat <- createCellChat(object = data.input, meta = meta, group.by = "labels", datatype = "spatial", 
+                           coordinate = spatial.locs, spatial.factors = spatial.factors)
+```
+
+```{r}
+CellChatDB <- CellChatDB.mouse
+showDatabaseCategory(CellChatDB)
+```
+
+```{r}
+CellChatDB.use <- subsetDB(CellChatDB, search = "Secreted Signaling") # use Secreted Signaling
+```
+
+
+```{r}
+cellchat <- subsetData(cellchat) 
+future::plan("multisession", workers = 4) # set to use 4 cores
+cellchat <- identifyOverExpressedGenes(cellchat)
+cellchat <- identifyOverExpressedInteractions(cellchat, variable.both = F)
+```
+
+```{r}
+cellchat <- computeCommunProb(cellchat, type = "truncatedMean", trim = 0.1, distance.use = TRUE, interaction.range = 250, scale.distance = 0.01, contact.dependent = TRUE, contact.range = 100)
+```
+
+# ------------- human data ---------------- #
+
+```{r}
+library("spatialLIBD")
+
+# processed layer-level data
+spe <- fetch_data(type = "spe") 
+
+#  original spot-level data
+# spe_spot <- fetch_data(type = "spatialLIBD_spot", eh = ExperimentHub())
+```
+
+
+## image with histology information
+```{r}
+vis_clus(
+    spe = spe,
+    clustervar = "spatialLIBD",
+    sampleid = "151673",
+    colors = libd_layer_colors,
+    ... = " DLPFC Human Brain Layers\nMade with research.libd.org/spatialLIBD/"
+)
+```
+
+# make a seurat object
+```{r}
+spe_subset <- spe[, spe$sample_id == "151673"]
+counts <- as.matrix(assays(spe_subset)$counts) # Get counts
+metadata <- as.data.frame(colData(spe_subset)) # Get metadata
+```
+
+```{r}
+# Create a basic Seurat object
+seurat_obj <- CreateSeuratObject(counts = counts, meta.data = metadata, project = "HumanBrainSpatial")
+
+# add meta data
+seurat_obj <- AddMetaData(seurat_obj, metadata = metadata)
+
+# add spatial coordinates 
+seu_object@meta.data$row <- spatialCoords(spe)[, "row"] 
+seu_object@meta.data$col <- spatialCoords(spe)[, "col"]
+```
+
+```{r}
+seurat_obj
+```
+
+```{r}
+seurat_obj <- SCTransform(seurat_obj, verbose = FALSE)
+```
+
+```{r}
+seurat_obj
+```
+
+
+# make a cellchat object from seurat
+```{r}
+data.input = Seurat::GetAssayData(seurat_obj, layer = "data", assay = "SCT") # normalized data matrix
+```
+
+```{r}
+meta = data.frame(labels = Seurat::Idents(seurat_obj), samples = "sample1", row.names = names(Seurat::Idents(seurat_obj))) # manually create a dataframe consisting of the cell labels
+meta$samples <- factor(meta$samples)
+unique(meta$labels) # check the cell labels
+```
+
+```{r}
+# check images in seurat object
+seurat_obj@images
+```
+
+```{r}
+spatial.locs = Seurat::GetTissueCoordinates(seurat_obj, scale = NULL, cols = c("imagerow", "imagecol"))
+spatial.locs = spatial.locs[,1:2]
+head(spatial.locs)
+```
+
+```{r}
+scalefactors = jsonlite::fromJSON(txt = file.path("/Users/emilyekstrum/Desktop/spatial_imaging_data_visium-brain/scalefactors_json.json"))
+spot.size = 65 # the theoretical spot size (um) in 10X Visium
+conversion.factor = spot.size/scalefactors$spot_diameter_fullres
+spatial.factors = data.frame(ratio = conversion.factor, tol = spot.size/2)
+```
+
+```{r}
+d.spatial <- computeCellDistance(coordinates = spatial.locs, ratio = spatial.factors$ratio, tol = spatial.factors$tol)
+min(d.spatial[d.spatial!=0]) # this value should approximately equal 100um for 10X Visium data
+```
