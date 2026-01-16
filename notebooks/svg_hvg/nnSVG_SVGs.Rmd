@@ -75,10 +75,10 @@ mouse_coords <- mouse_coords[mouse_common, , drop = FALSE]
 mouse_keep <- Matrix::rowSums(mouse_exp_mat > 0) >= 10  # can edit to make more strict
 mouse_exp_mat <- mouse_exp_mat[mouse_keep, , drop = FALSE]
 
-# cap to 3000 most variable genes using sparse variance proxy
-mouse_gene_vars <- Matrix::rowMeans(mouse_exp_mat^2) - (Matrix::rowMeans(mouse_exp_mat))^2
-mouse_top <- names(sort(mouse_gene_vars, decreasing = TRUE))[1:min(10000, length(mouse_gene_vars))]
-mouse_exp_mat <- mouse_exp_mat[mouse_top, , drop = FALSE]
+# cap to 3000 most variable genes using sparse variance proxy - NOT USED AS OF 1/16/26
+# mouse_gene_vars <- Matrix::rowMeans(mouse_exp_mat^2) - (Matrix::rowMeans(mouse_exp_mat))^2
+# mouse_top <- names(sort(mouse_gene_vars, decreasing = TRUE))[1:min(10000, length(mouse_gene_vars))]
+# mouse_exp_mat <- mouse_exp_mat[mouse_top, , drop = FALSE]
 
 # check you have dgCMatrix
 #class(mouse_exp_mat)
@@ -339,10 +339,10 @@ human_coords <- human_coords[human_common, , drop = FALSE]
 human_keep <- Matrix::rowSums(human_exp_mat > 0) >= 10  # can edit to make more strict
 human_exp_mat <- human_exp_mat[human_keep, , drop = FALSE]
 
-# cap to 3000 most variable genes using sparse variance proxy
-human_gene_vars <- Matrix::rowMeans(human_exp_mat^2) - (Matrix::rowMeans(human_exp_mat))^2
-human_top <- names(sort(human_gene_vars, decreasing = TRUE))[1:min(5000, length(human_gene_vars))]
-human_exp_mat <- human_exp_mat[human_top, , drop = FALSE]
+# cap to 3000 most variable genes using sparse variance proxy - NOT USED AS OF 1/16/26
+# human_gene_vars <- Matrix::rowMeans(human_exp_mat^2) - (Matrix::rowMeans(human_exp_mat))^2
+# human_top <- names(sort(human_gene_vars, decreasing = TRUE))[1:min(5000, length(human_gene_vars))]
+# human_exp_mat <- human_exp_mat[human_top, , drop = FALSE]
 
 # check you have dgCMatrix
 #class(human_exp_mat)
