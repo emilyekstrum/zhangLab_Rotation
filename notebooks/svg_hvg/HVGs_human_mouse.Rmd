@@ -11,8 +11,8 @@ output:
     df_print: paged
     
 params:
-  mouse_rds_path: "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/mousebrain_seurat.rds"
-  human_rds_path: "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/humanbrain_seurat.rds"
+  mouse_rds_path: "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/seurat_objs/mousebrain_seurat.rds"
+  human_rds_path: "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/seurat_objs/humanbrain_seurat.rds"
   seed: 123
 ---
 
@@ -162,6 +162,12 @@ head(mouse_hvg_matrix_gene_by_cell[, 1:20])
 saveRDS(mouse_hvg_matrix_gene_by_cell, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/hvgs/mouse_hvg_cell_gene_matrix.rds")
 ```
 
+# save gene by cell matrix as csv
+```{r save-mouse-hvg-matrix-csv}
+write.csv(mouse_hvg_matrix, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/hvgs/mouse_hvg_gene_cell_matrix.csv")
+
+```
+
 
 #------------- human data ----------------#
 
@@ -269,3 +275,8 @@ head(human_hvg_matrix_cell_by_gene[, 1:20])
 saveRDS(human_hvg_matrix_cell_by_gene, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/hvgs/human_hvg_cell_gene_matrix.rds")
 ```
 
+# save gene by cell matrix as csv
+```{r}
+write.csv(human_hvg_matrix, file = "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/hvgs/human_hvg_gene_cell_matrix.csv")
+
+```
