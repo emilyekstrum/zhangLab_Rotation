@@ -73,6 +73,23 @@ mouse_coords <- mouse_coords[mouse_common, , drop = FALSE]
 
 # keep genes that are expressed in at least 10 spots
 mouse_keep <- Matrix::rowSums(mouse_exp_mat > 0) >= 10  # can edit to make more strict
+
+# remove any all-zero spots (after subsetting)
+spot_keep <- Matrix::colSums(mouse_exp_mat) > 0
+mouse_exp_mat <- mouse_exp_mat[, spot_keep, drop = FALSE]
+mouse_coords  <- mouse_coords[spot_keep, , drop = FALSE]
+
+# remove near-constant genes
+mouse_gene_vars <- Matrix::rowMeans(mouse_exp_mat^2) - (Matrix::rowMeans(mouse_exp_mat))^2
+mouse_exp_mat <- mouse_exp_mat[mouse_gene_vars > 1e-8, , drop = FALSE]
+
+# jitter duplicate coords if any
+dup <- duplicated(mouse_coords)
+if (any(dup)) {
+  set.seed(1)
+  mouse_coords[dup, ] <- mouse_coords[dup, ] + matrix(rnorm(sum(dup) * 2, sd = 1e-3), ncol = 2)
+}
+
 mouse_exp_mat <- mouse_exp_mat[mouse_keep, , drop = FALSE]
 
 # cap to 3000 most variable genes using sparse variance proxy - NOT USED AS OF 1/16/26
@@ -86,9 +103,11 @@ mouse_exp_mat <- mouse_exp_mat[mouse_keep, , drop = FALSE]
 
 ```
 
+
 ```{r}
 # run nnSVG to find spatially variable genes
-mouse_svgs <- nnSVG(input = mouse_exp_mat, spatial_coords = mouse_coords, BPPARAM = bp)
+param <- SerialParam(progressbar = TRUE)
+mouse_svgs <- nnSVG(input = mouse_exp_mat, spatial_coords = mouse_coords, BPPARAM = bp, verbose = TRUE)
 ```
 
 ```{r}
@@ -336,8 +355,28 @@ human_exp_mat <- human_exp_mat[, human_common, drop = FALSE]
 human_coords <- human_coords[human_common, , drop = FALSE]
 
 # keep genes that are expressed in at least 10 spots
-human_keep <- Matrix::rowSums(human_exp_mat > 0) >= 10  # can edit to make more strict
+human_keep <- Matrix::rowSums(human_exp_mat > 0) >= 10
 human_exp_mat <- human_exp_mat[human_keep, , drop = FALSE]
+
+# remove any all-zero spots (after subsetting)
+spot_keep <- Matrix::colSums(human_exp_mat) > 0
+human_exp_mat <- human_exp_mat[, spot_keep, drop = FALSE]
+human_coords  <- human_coords[spot_keep, , drop = FALSE]
+
+# remove any all-zero genes (optional but recommended)
+gene_keep0 <- Matrix::rowSums(human_exp_mat) > 0
+human_exp_mat <- human_exp_mat[gene_keep0, , drop = FALSE]
+
+# remove near-constant genes
+human_gene_vars <- Matrix::rowMeans(human_exp_mat^2) - (Matrix::rowMeans(human_exp_mat))^2
+human_exp_mat <- human_exp_mat[human_gene_vars > 1e-8, , drop = FALSE]
+
+# jitter duplicate coords if any
+dup <- duplicated(human_coords)
+if (any(dup)) {
+  set.seed(1)
+  human_coords[dup, ] <- human_coords[dup, ] + matrix(rnorm(sum(dup) * 2, sd = 1e-3), ncol = 2)
+}
 
 # cap to 3000 most variable genes using sparse variance proxy - NOT USED AS OF 1/16/26
 # human_gene_vars <- Matrix::rowMeans(human_exp_mat^2) - (Matrix::rowMeans(human_exp_mat))^2
@@ -351,8 +390,16 @@ human_exp_mat <- human_exp_mat[human_keep, , drop = FALSE]
 ```
 
 ```{r}
+# check dimensions
+dim(human_exp_mat) # genes by cells
+dim(human_coords) # cells by 2
+```
+
+
+```{r}
 # run nnSVG to find spatially variable genes
-human_svgs <- nnSVG(input = human_exp_mat, spatial_coords = human_coords, BPPARAM = bp)
+param <- SerialParam(progressbar = TRUE)
+human_svgs <- nnSVG(input = human_exp_mat, spatial_coords = human_coords, BPPARAM = bp, verbose = TRUE)
 ```
 
 ```{r}
