@@ -54,6 +54,7 @@ set.seed(params$seed)
 # Human Brain EDA & Seurat Analysis
 
 1. Loads in 10x visium human brain spatial transcriptomics data from H5 file
+    - spans 6 neuronal layers + white matter
 2. merges spatial coordinates and manual annotations into `meta.data`
 3. EDA/QC: library size, detected genes, mitochondrial fraction
 4. Saves seurat object as RDA file
