@@ -59,7 +59,8 @@ pkgs <- c(
   "patchwork",
   "usethis",
   "credentials",
-  "BiocManager"
+  "BiocManager",
+  "scCustomize"
 )
 
 to_install <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
@@ -417,13 +418,21 @@ UMAP clusters have relatively distinct spatial localization patterns on the tiss
 # Save outputs
 
 ```{r save, results='asis'}
-out_dir <- "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/"
+out_dir <- "/Users/emilyekstrum/repos/zhangLab_Rotation/data/processed/seurat_objs"
 dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
 
 seurat_rds <- file.path(out_dir, "mousebrain_seurat.rds")
 saveRDS(mouse_seurat_sct, seurat_rds)
 
 cat("Saved Seurat object to: ", seurat_rds, "\\n")
+```
+
+# save as h5ad file
+```{r}
+as.anndata(mouse_seurat_sct,
+           filename = file.path(out_dir, "mousebrain_seurat.h5ad"),
+           assay = "SCT",
+           verbose = TRUE)
 ```
 
 ```{r session-info}
